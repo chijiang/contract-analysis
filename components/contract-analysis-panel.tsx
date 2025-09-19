@@ -127,9 +127,9 @@ const getRiskColor = (level: string) => {
     case "high":
       return "destructive"
     case "medium":
-      return "secondary"
+      return "warning"
     case "low":
-      return "default"
+      return "success"
     default:
       return "default"
   }

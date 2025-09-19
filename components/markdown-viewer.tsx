@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from "react"
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useMemo } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
@@ -21,85 +21,89 @@ const MarkdownViewer = forwardRef<MarkdownViewerRef, MarkdownViewerProps>(
     const [highlightedContent, setHighlightedContent] = useState<string>(content)
     const [currentHighlight, setCurrentHighlight] = useState<string | null>(null)
 
-    // 清理文本用于匹配（移除多余空白字符）
-    const cleanText = (text: string): string => {
-      return text.replace(/\s+/g, ' ').trim()
+    const normalizeForMatch = (text: string): string => {
+      return text.replace(/\s+/g, "").toLowerCase()
     }
+
+    const tokeniseForFallback = (text: string): string[] => {
+      return text
+        .split(/[\s,，。；;:：、\n\r()（）【】『』「」“”"'<>《》]+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 1)
+    }
+
+    const { normalizedContent, normalizedIndexMap } = useMemo(() => {
+      const chars: string[] = []
+      const indexMap: number[] = []
+
+      for (let i = 0; i < content.length; i++) {
+        const char = content[i]
+        if (!char.match(/\s/)) {
+          chars.push(char.toLowerCase())
+          indexMap.push(i)
+        }
+      }
+
+      return {
+        normalizedContent: chars.join(""),
+        normalizedIndexMap: indexMap,
+      }
+    }, [content])
 
     // 查找文本在内容中的位置并高亮
     const highlightAndScrollTo = (searchText: string): boolean => {
       if (!searchText || !content) return false
 
-      let cleanedSearchText = cleanText(searchText)
-      const cleanedContent = cleanText(content)
-      
-      // 在清理后的内容中查找位置
-      let index = cleanedContent.toLowerCase().indexOf(cleanedSearchText.toLowerCase())
-      if (index === -1) {
-        // 如果找不到完全匹配，尝试查找部分匹配
-        const words = cleanedSearchText.split(' ').filter(word => word.length > 2)
-        let bestMatch = ''
+      let normalizedTarget = normalizeForMatch(searchText)
+      if (!normalizedTarget) return false
+
+      let normalizedIndex = normalizedContent.indexOf(normalizedTarget)
+
+      if (normalizedIndex === -1) {
+        const tokens = tokeniseForFallback(searchText)
+        let bestLength = 0
         let bestIndex = -1
-        
-        for (const word of words) {
-          const wordIndex = cleanedContent.toLowerCase().indexOf(word.toLowerCase())
-          if (wordIndex !== -1) {
-            // 找到单词后，尝试扩展匹配范围
-            const start = Math.max(0, wordIndex - 50)
-            const end = Math.min(cleanedContent.length, wordIndex + word.length + 50)
-            const contextText = cleanedContent.slice(start, end)
-            
-            if (contextText.length > bestMatch.length) {
-              bestMatch = contextText
+
+        for (const token of tokens) {
+          const normalizedToken = normalizeForMatch(token)
+          if (!normalizedToken) continue
+
+          const tokenIndex = normalizedContent.indexOf(normalizedToken)
+          if (tokenIndex !== -1) {
+            const contextRadius = 50
+            const start = Math.max(0, tokenIndex - contextRadius)
+            const end = Math.min(normalizedContent.length, tokenIndex + normalizedToken.length + contextRadius)
+            const candidateLength = end - start
+
+            if (candidateLength > bestLength) {
+              bestLength = candidateLength
               bestIndex = start
+              normalizedTarget = normalizedContent.slice(start, end)
             }
           }
         }
-        
-        if (bestIndex === -1) return false
-        
-        // 使用最佳匹配
-        cleanedSearchText = bestMatch
-        index = bestIndex
-      }
 
-      // 在原始内容中找到对应位置
-      let originalIndex = -1
-      let cleanIndex = 0
-      
-      for (let i = 0; i < content.length && cleanIndex < index; i++) {
-        if (content[i].match(/\s/)) {
-          // 跳过连续空白字符
-          while (i < content.length && content[i].match(/\s/)) {
-            i++
-          }
-          i-- // 回退一位，因为for循环会自动+1
-          cleanIndex++
-        } else {
-          if (cleanIndex === index) {
-            originalIndex = i
-            break
-          }
-          cleanIndex++
+        if (bestIndex !== -1) {
+          normalizedIndex = bestIndex
         }
       }
 
-      if (originalIndex === -1) {
-        // 如果精确匹配失败，使用模糊匹配
-        originalIndex = content.toLowerCase().indexOf(cleanedSearchText.toLowerCase())
-      }
+      if (normalizedIndex === -1) return false
 
-      if (originalIndex === -1) return false
+      const highlightStart = normalizedIndexMap[normalizedIndex]
+      const highlightEndIndex = normalizedIndex + normalizedTarget.length - 1
+      const highlightEnd = normalizedIndexMap[Math.min(highlightEndIndex, normalizedIndexMap.length - 1)]
 
-      // 创建高亮的HTML内容
-      const beforeText = content.slice(0, originalIndex)
-      const matchedText = content.slice(originalIndex, originalIndex + cleanedSearchText.length)
-      const afterText = content.slice(originalIndex + cleanedSearchText.length)
+      if (highlightStart === undefined || highlightEnd === undefined) return false
+
+      const beforeText = content.slice(0, highlightStart)
+      const matchedText = content.slice(highlightStart, highlightEnd + 1)
+      const afterText = content.slice(highlightEnd + 1)
 
       const highlighted = `${beforeText}<mark class="bg-yellow-200 px-1 py-0.5 rounded animate-pulse" id="highlight-target">${matchedText}</mark>${afterText}`
       
       setHighlightedContent(highlighted)
-      setCurrentHighlight(cleanedSearchText)
+      setCurrentHighlight(matchedText)
 
       // 滚动到高亮位置
       setTimeout(() => {

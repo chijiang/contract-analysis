@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: contract-backend
+    env_file:
+      - backend/.env.backend
+    environment:
+      - PORT=8000
+    ports:
+      - "8000:8000"
+    networks:
+      - appnet
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: contract-frontend
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:./prisma/dev.db
+      - NEXT_PUBLIC_API_BASE_URL=http://backend:8000
+      - FILE_STORAGE_PROVIDER=local
+      - LOCAL_STORAGE_ROOT=/app/storage/uploads
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./prisma/prisma:/app/prisma/prisma
+      - ./storage:/app/storage
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge

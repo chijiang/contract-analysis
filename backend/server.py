@@ -1,9 +1,11 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from models import NonStandardDetectionRequest
+from models import BasicInfoExtractionResult, NonStandardDetectionRequest, BasicInfoExtractionRequest
 from service.pdf_converter import OcrPdfParser
 from service.non_statndard_detection import NonStandardDetection
+from service.contract_info_extraction import ContractInfoExtraction
 from config import PORT
+import uuid
 import os
 
 app = FastAPI()
@@ -43,13 +45,14 @@ app.add_middleware(
 
 ocr_parser = OcrPdfParser()
 non_standard_detector = NonStandardDetection()
+contract_info_extractor = ContractInfoExtraction()
 
 
 @app.post("/api/v1/pdf_to_markdown")
 async def pdf_to_markdown(file: UploadFile = File(...)):
     if file.content_type != "application/pdf":
         return {"error": "File type must be application/pdf"}
-    pdf_path = "temp.pdf"
+    pdf_path = f"temp_{uuid.uuid4()}.pdf"
     with open(pdf_path, "wb") as f:
         f.write(file.file.read())
     markdown = await ocr_parser.parse(pdf_path)
@@ -62,6 +65,13 @@ async def non_standard_detection(NonStandardDetectionRequest: NonStandardDetecti
     markdown = NonStandardDetectionRequest.content
     result = await non_standard_detector.process(markdown, NonStandardDetectionRequest.standard_clauses)
     return {"result": result}
+
+
+@app.post("/api/v1/basic_info_extraction", response_model=BasicInfoExtractionResult)
+async def basic_info_extraction(req: BasicInfoExtractionRequest):
+    markdown = req.content
+    result = await contract_info_extractor.extract_basic_info(markdown)
+    return result
 
 
 if __name__ == "__main__":

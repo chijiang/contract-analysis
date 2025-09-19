@@ -60,7 +60,6 @@ type AnalyzedClause = {
   clauseCategory: string
   clauseItem: string
   contractText: string
-  location: ClauseLocation | null
   standardReference: ClauseStandardReference
   compliance: string | null
   risk: ClauseRisk | null
@@ -100,6 +99,32 @@ type AnalyzeContractResponse = {
   analysis: StoredAnalysisRecord
 }
 
+type CommonStatus = "idle" | "loading" | "success" | "error"
+type SaveStatus = "idle" | "saving" | "success" | "error"
+
+const STORAGE_KEY = "contract-review-interface-cache"
+const STORAGE_VERSION = 1
+
+type CachedReviewState = {
+  version: number
+  timestamp: string
+  contractRecord: ContractRecord | null
+  markdownContent: string
+  markdownStatus: CommonStatus
+  markdownError: string | null
+  previewMode: "pdf" | "markdown"
+  saveStatus: SaveStatus
+  saveError: string | null
+  analysisStatus: CommonStatus
+  analysisError: string | null
+  analysisResultsByTemplate: Record<string, NonStandardDetectionResult>
+  analysisRecord: StoredAnalysisRecord | null
+  analysisSource: "fresh" | "cache" | null
+  selectedClauseRef: { templateId: string; index: number } | null
+  selectedTemplateIds: string[]
+  cachedFileName: string | null
+}
+
 const normalizeDetectionResult = (payload: unknown): NonStandardDetectionResult => {
   const containerCandidate =
     payload && typeof payload === "object" && "result" in payload
@@ -124,26 +149,8 @@ const normalizeDetectionResult = (payload: unknown): NonStandardDetectionResult 
     const clauseItemValue = clauseRecord?.["clause_item"]
     const clauseItem = typeof clauseItemValue === "string" && clauseItemValue.trim() ? clauseItemValue : "未命名条款"
 
-    const contractTextValue = clauseRecord?.["contract_text"]
+    const contractTextValue = clauseRecord?.["contract_snippet"]
     const contractText = typeof contractTextValue === "string" ? contractTextValue : ""
-
-    const locationValue = clauseRecord?.["location"]
-    const location = locationValue && typeof locationValue === "object"
-      ? (() => {
-          const locationRecord = locationValue as Record<string, unknown>
-          const headingPathValue = locationRecord["heading_path"]
-          const sectionTitleValue = locationRecord["section_title"]
-          const snippetValue = locationRecord["snippet"]
-
-          return {
-            heading_path: Array.isArray(headingPathValue)
-              ? (headingPathValue as string[]).filter((item): item is string => typeof item === "string")
-              : [],
-            section_title: typeof sectionTitleValue === "string" ? sectionTitleValue : null,
-            snippet: typeof snippetValue === "string" ? snippetValue : null,
-          }
-        })()
-      : null
 
     const standardReferenceValue = clauseRecord?.["standard_reference"]
     const standardReference = standardReferenceValue && typeof standardReferenceValue === "object"
@@ -184,7 +191,6 @@ const normalizeDetectionResult = (payload: unknown): NonStandardDetectionResult 
       clauseCategory,
       clauseItem,
       contractText,
-      location,
       standardReference,
       compliance,
       risk,
@@ -282,9 +288,11 @@ export function ContractReviewInterface() {
     hasAnalysis: boolean
   } | null>(null)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
-  const [pendingMarkdown, setPendingMarkdown] = useState<string>("")
   const [fileHash, setFileHash] = useState<string | null>(null)
-  const [skipMarkdownConversion, setSkipMarkdownConversion] = useState(false)
+  const [shouldConvertMarkdown, setShouldConvertMarkdown] = useState(false)
+  const [cachedFileName, setCachedFileName] = useState<string | null>(null)
+  const [hasLoadedFromCache, setHasLoadedFromCache] = useState(false)
+  const hasRestoredFromCache = useRef(false)
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
   const encodedFileUrl = useMemo(() => {
@@ -295,6 +303,75 @@ export function ContractReviewInterface() {
       .map((segment) => encodeURIComponent(segment))
     return `/api/files/${encodedSegments.join("/")}`
   }, [contractRecord])
+
+  useEffect(() => {
+    if (hasRestoredFromCache.current) {
+      setHasLoadedFromCache(true)
+      return
+    }
+
+    if (typeof window === "undefined") {
+      setHasLoadedFromCache(true)
+      return
+    }
+
+    hasRestoredFromCache.current = true
+
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY)
+      if (!raw) {
+        return
+      }
+
+      const parsed = JSON.parse(raw) as CachedReviewState | null
+
+      if (!parsed || parsed.version !== STORAGE_VERSION) {
+        window.localStorage.removeItem(STORAGE_KEY)
+        return
+      }
+
+      const results = parsed.analysisResultsByTemplate ?? {}
+      const restoredTemplateIds = Array.isArray(parsed.selectedTemplateIds)
+        ? parsed.selectedTemplateIds.filter((value): value is string => typeof value === "string" && value.length > 0)
+        : []
+
+      setContractRecord(parsed.contractRecord ?? null)
+      const restoredMarkdown = typeof parsed.markdownContent === "string" ? parsed.markdownContent : ""
+      setMarkdownContent(restoredMarkdown)
+      setMarkdownStatus(parsed.markdownStatus ?? (restoredMarkdown ? "success" : "idle"))
+      setMarkdownError(parsed.markdownError ?? null)
+      setPreviewMode(parsed.previewMode === "markdown" ? "markdown" : "pdf")
+      setSaveStatus(parsed.saveStatus ?? (parsed.contractRecord ? "success" : "idle"))
+      setSaveError(parsed.saveError ?? null)
+
+      const hasResults = Object.keys(results).length > 0
+      setAnalysisResultsByTemplate(results)
+      setAnalysisRecord(parsed.analysisRecord ?? null)
+      setAnalysisSource(parsed.analysisSource ?? (hasResults ? "cache" : null))
+      setAnalysisStatus(hasResults ? "success" : parsed.analysisStatus ?? "idle")
+      setAnalysisError(parsed.analysisError ?? null)
+      setSelectedTemplateIds(restoredTemplateIds)
+
+      const clauseRefCandidate = parsed.selectedClauseRef
+      const validatedClauseRef =
+        clauseRefCandidate &&
+        typeof clauseRefCandidate.templateId === "string" &&
+        typeof clauseRefCandidate.index === "number" &&
+        clauseRefCandidate.index >= 0 &&
+        results[clauseRefCandidate.templateId]?.extractedClauses?.[clauseRefCandidate.index]
+          ? clauseRefCandidate
+          : pickFirstClauseRef(results, restoredTemplateIds)
+
+      setSelectedClauseRef(validatedClauseRef ?? null)
+
+      setCachedFileName(parsed.cachedFileName ?? parsed.contractRecord?.originalFileName ?? null)
+    } catch (error) {
+      console.warn("恢复合同审核缓存失败:", error)
+      window.localStorage.removeItem(STORAGE_KEY)
+    } finally {
+      setHasLoadedFromCache(true)
+    }
+  }, [])
 
   const loadTemplates = useCallback(async () => {
     setTemplatesStatus("loading")
@@ -324,41 +401,44 @@ export function ContractReviewInterface() {
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file) {
-      setUploadedFile(file)
-      setPreviewMode("pdf")
-      
-      // 立即检查文件是否重复
-      try {
-        const formData = new FormData()
-        formData.append("file", file)
-        
-        const response = await fetch("/api/contracts/check-duplicate", {
-          method: "POST",
-          body: formData,
-        })
-        
-        if (response.ok) {
-          const result = await response.json()
-          if (result.isDuplicate) {
-            // 找到重复文件，显示对话框
-            setExistingContract(result.existingContract)
-            setPendingFile(file)
-            setPendingMarkdown("") // 暂时为空，等获取markdown后填充
-            setDuplicateDialogOpen(true)
-            setSkipMarkdownConversion(true) // 标记跳过markdown转换
-            // 不继续转换markdown
-            return
-          } else {
-            // 保存文件hash供后续使用
-            setFileHash(result.fileHash)
-          }
+    if (!file) return
+
+    setUploadedFile(file)
+    setPreviewMode("pdf")
+    setShouldConvertMarkdown(false)
+    setFileHash(null)
+    setPendingFile(null)
+    setCachedFileName(file.name)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const response = await fetch("/api/contracts/check-duplicate", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        if (result.isDuplicate) {
+          setExistingContract(result.existingContract)
+          setPendingFile(file)
+          setDuplicateDialogOpen(true)
+          setFileHash(null)
+          return
         }
-      } catch (error) {
-        console.error("检查重复文件失败:", error)
-        // 如果检查失败，继续正常流程
+
+        if (typeof result.fileHash === "string") {
+          setFileHash(result.fileHash)
+        }
       }
+    } catch (error) {
+      console.error("检查重复文件失败:", error)
+      // 如果检查失败，保持默认流程
     }
+
+    setShouldConvertMarkdown(true)
   }
 
   useEffect(() => {
@@ -367,6 +447,82 @@ export function ContractReviewInterface() {
       setTemplatesError("加载产品合同模板失败")
     })
   }, [loadTemplates])
+
+  useEffect(() => {
+    if (uploadedFile) {
+      return
+    }
+
+    if (!encodedFileUrl) {
+      setPdfPreviewUrl(null)
+      return
+    }
+
+    setPdfPreviewUrl(encodedFileUrl)
+  }, [uploadedFile, encodedFileUrl])
+
+  useEffect(() => {
+    if (!hasLoadedFromCache) {
+      return
+    }
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const hasPersistableData =
+      Boolean(contractRecord) ||
+      Boolean(markdownContent) ||
+      Object.keys(analysisResultsByTemplate).length > 0 ||
+      Boolean(cachedFileName)
+
+    if (!hasPersistableData) {
+      window.localStorage.removeItem(STORAGE_KEY)
+      return
+    }
+
+    const payload: CachedReviewState = {
+      version: STORAGE_VERSION,
+      timestamp: new Date().toISOString(),
+      contractRecord,
+      markdownContent,
+      markdownStatus,
+      markdownError,
+      previewMode,
+      saveStatus,
+      saveError,
+      analysisStatus,
+      analysisError,
+      analysisResultsByTemplate,
+      analysisRecord,
+      analysisSource,
+      selectedClauseRef,
+      selectedTemplateIds,
+      cachedFileName,
+    }
+
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+    } catch (error) {
+      console.warn("保存合同审核缓存失败:", error)
+    }
+  }, [
+    hasLoadedFromCache,
+    contractRecord,
+    markdownContent,
+    markdownStatus,
+    markdownError,
+    previewMode,
+    saveStatus,
+    saveError,
+    analysisStatus,
+    analysisError,
+    analysisResultsByTemplate,
+    analysisRecord,
+    analysisSource,
+    selectedClauseRef,
+    selectedTemplateIds,
+    cachedFileName,
+  ])
 
   const persistContract = useCallback(
     async (file: File, markdown: string) => {
@@ -395,6 +551,7 @@ export function ContractReviewInterface() {
 
         const contract = (await response.json()) as ContractRecord
         setContractRecord(contract)
+        setCachedFileName(contract.originalFileName)
         setSaveStatus("success")
       } catch (error) {
         setSaveStatus("error")
@@ -411,7 +568,9 @@ export function ContractReviewInterface() {
       // 直接使用数据库中的markdown内容，无需调用转换API
       setMarkdownContent(existingContract.markdown)
       setMarkdownStatus("success")
-      
+      setShouldConvertMarkdown(false)
+      setCachedFileName(existingContract.originalFileName)
+
       // 获取完整的合同记录
       const response = await fetch(`/api/contracts`)
       if (response.ok) {
@@ -462,8 +621,7 @@ export function ContractReviewInterface() {
       setDuplicateDialogOpen(false)
       setExistingContract(null)
       setPendingFile(null)
-      setPendingMarkdown("")
-      // 不需要重置skipMarkdownConversion，因为我们已经完成了处理
+      setShouldConvertMarkdown(false)
     } catch (error) {
       console.error("使用现有合同失败:", error)
       // 如果出错，关闭对话框但显示错误
@@ -480,20 +638,46 @@ export function ContractReviewInterface() {
     setDuplicateDialogOpen(false)
     setExistingContract(null)
     setPendingFile(null)
-    setPendingMarkdown("")
-    setSkipMarkdownConversion(false) // 重置标记，允许markdown转换
-    
+    setFileHash(null)
+    setShouldConvertMarkdown(true)
+
     // 继续正常的markdown转换流程
     // 这里不需要做其他事情，因为convertPdfToMarkdown会在useEffect中被调用
   }, [pendingFile])
 
+  const handleStartNewAnalysis = useCallback(() => {
+    setUploadedFile(null)
+    setPreviewMode("pdf")
+    setPdfPreviewUrl(null)
+    setMarkdownContent("")
+    setMarkdownStatus("idle")
+    setMarkdownError(null)
+    setContractRecord(null)
+    setSaveStatus("idle")
+    setSaveError(null)
+    setAnalysisStatus("idle")
+    setAnalysisError(null)
+    setAnalysisResultsByTemplate({})
+    setAnalysisRecord(null)
+    setAnalysisSource(null)
+    setSelectedClauseRef(null)
+    setCachedFileName(null)
+    setExistingContract(null)
+    setPendingFile(null)
+    setPendingAnalysisAction(null)
+    setTemplateDialogOpen(false)
+    setTemplateDialogError(null)
+    setPendingTemplateSelection([])
+    setFileHash(null)
+    setShouldConvertMarkdown(false)
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(STORAGE_KEY)
+    }
+  }, [])
+
   const convertPdfToMarkdown = useCallback(
     async (file: File) => {
-      // 如果标记为跳过markdown转换，则不执行
-      if (skipMarkdownConversion) {
-        return
-      }
-
       if (!apiBaseUrl) {
         setMarkdownStatus("error")
         setMarkdownError("未配置后端地址，请设置 NEXT_PUBLIC_API_BASE_URL")
@@ -531,31 +715,18 @@ export function ContractReviewInterface() {
         setMarkdownContent(markdown)
         setMarkdownStatus("success")
         await persistContract(file, markdown)
+        setShouldConvertMarkdown(false)
       } catch (error) {
         setMarkdownStatus("error")
         setMarkdownError(error instanceof Error ? error.message : "转换失败，请稍后重试")
+        setShouldConvertMarkdown(false)
       }
     },
-    [apiBaseUrl, persistContract, skipMarkdownConversion],
+    [apiBaseUrl, persistContract],
   )
 
   useEffect(() => {
     if (!uploadedFile) {
-      setPdfPreviewUrl(null)
-      setMarkdownContent("")
-      setMarkdownStatus("idle")
-      setMarkdownError(null)
-      setContractRecord(null)
-      setSaveStatus("idle")
-      setSaveError(null)
-      setAnalysisStatus("idle")
-      setAnalysisError(null)
-      setAnalysisResultsByTemplate({})
-      setAnalysisRecord(null)
-      setAnalysisSource(null)
-      setSelectedClauseRef(null)
-      setFileHash(null)
-      setSkipMarkdownConversion(false)
       return
     }
 
@@ -574,12 +745,18 @@ export function ContractReviewInterface() {
     setAnalysisSource(null)
     setSelectedClauseRef(null)
 
-    void convertPdfToMarkdown(uploadedFile)
-
     return () => {
       URL.revokeObjectURL(objectUrl)
     }
-  }, [uploadedFile, convertPdfToMarkdown])
+  }, [uploadedFile])
+
+  useEffect(() => {
+    if (!uploadedFile || !shouldConvertMarkdown) {
+      return
+    }
+
+    void convertPdfToMarkdown(uploadedFile)
+  }, [convertPdfToMarkdown, shouldConvertMarkdown, uploadedFile])
 
   useEffect(() => {
     if (markdownStatus !== "success" || !markdownContent) {
@@ -815,6 +992,19 @@ export function ContractReviewInterface() {
     return "secondary"
   }
 
+  const hasAnalysisResults = useMemo(
+    () => Object.keys(analysisResultsByTemplate).length > 0,
+    [analysisResultsByTemplate],
+  )
+  const hasContractSession = Boolean(
+    uploadedFile ||
+      contractRecord ||
+      cachedFileName ||
+      markdownContent ||
+      hasAnalysisResults,
+  )
+  const displayFileName = uploadedFile?.name ?? cachedFileName ?? contractRecord?.originalFileName ?? null
+
   const analysisButtonDisabled =
     analysisStatus === "loading" ||
     markdownStatus !== "success" ||
@@ -1004,15 +1194,22 @@ export function ContractReviewInterface() {
 
       <div className="space-y-6">
         <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            合同上传
-          </CardTitle>
-          <CardDescription>上传PDF文件进行智能分析</CardDescription>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              合同上传
+            </CardTitle>
+            <CardDescription>上传PDF文件进行智能分析</CardDescription>
+          </div>
+          {hasContractSession && (
+            <Button type="button" variant="outline" size="sm" onClick={handleStartNewAnalysis}>
+              新建分析
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
-          {!uploadedFile ? (
+          {!hasContractSession ? (
             <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-12 text-center">
               <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">上传合同文件</h3>
@@ -1029,8 +1226,8 @@ export function ContractReviewInterface() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FileText className="h-5 w-5 text-primary" />
-                  <span className="font-medium">{uploadedFile.name}</span>
-                  <Badge variant="secondary">已上传</Badge>
+                  <span className="font-medium">{displayFileName ?? "未命名合同"}</span>
+                  <Badge variant={contractRecord ? "default" : "secondary"}>{contractRecord ? "已保存" : "已上传"}</Badge>
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -1061,7 +1258,7 @@ export function ContractReviewInterface() {
           )}
         </CardContent>
       </Card>
-      {uploadedFile && (
+      {hasContractSession && (
         <div className="space-y-6">
           {/* <ContractAnalysisPanel /> */}
 
@@ -1072,7 +1269,7 @@ export function ContractReviewInterface() {
                   <div>
                     <CardTitle>合同内容预览</CardTitle>
                     <CardDescription>
-                      {previewMode === "pdf" ? "实时查看合同PDF页面" : "查看结构化Markdown版内容"}
+                      {previewMode === "pdf" ? "实时查看合同PDF页面" : "查看文本化识别版内容"}
                     </CardDescription>
                   </div>
                   <div className="inline-flex items-center gap-2">
@@ -1092,7 +1289,7 @@ export function ContractReviewInterface() {
                       disabled={previewMode === "markdown"}
                       onClick={() => setPreviewMode("markdown")}
                     >
-                      Markdown版
+                      文本识别版
                     </Button>
                   </div>
                 </div>
@@ -1156,45 +1353,48 @@ export function ContractReviewInterface() {
               </Card>
 
             <Card className="flex flex-col min-h-[700px]">
-              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <CardTitle>合同分析结果</CardTitle>
-                  <CardDescription>针对当前合同内容的条款比对与风险识别</CardDescription>
+              <CardHeader className="space-y-1">
+                {/* 第一行：标题 */}
+                <CardTitle>合同分析结果</CardTitle>
+                <CardDescription>针对当前合同内容的条款比对与风险识别</CardDescription>
+                
+                {/* 第三行：按钮 */}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="default"
+                    disabled={analysisButtonDisabled}
+                    onClick={() => openTemplateSelection("analyze")}
+                  >
+                    {analysisStatus === "loading" ? "分析中..." : "智能分析"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="default"
+                    variant="outline"
+                    disabled={analysisButtonDisabled || !analysisRecord}
+                    onClick={() => openTemplateSelection("reprocess")}
+                  >
+                    {analysisStatus === "loading" ? "处理中..." : "重新处理"}
+                  </Button>
                 </div>
-                <div className="flex flex-col gap-3 sm:items-end sm:text-right">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={analysisButtonDisabled}
-                      onClick={() => openTemplateSelection("analyze")}
-                    >
-                      {analysisStatus === "loading" ? "分析中..." : "开始智能分析"}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={analysisButtonDisabled || !analysisRecord}
-                      onClick={() => openTemplateSelection("reprocess")}
-                    >
-                      {analysisStatus === "loading" ? "处理中..." : "重新处理"}
-                    </Button>
+                
+                {/* 第四行：历史结果badge + 更新时间 */}
+                {analysisRecord && (
+                  <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                    <Badge variant={analysisSource === "cache" ? "secondary" : "default"}>
+                      {analysisSource === "cache" ? "历史结果" : "最新结果"}
+                    </Badge>
+                    {analysisTimestamp && <span>更新时间：{analysisTimestamp}</span>}
                   </div>
-                  {selectedTemplateNames.length > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      已选择模板：{selectedTemplateNames.join("、")}
-                    </div>
-                  )}
-                  {analysisRecord && (
-                    <div className="flex flex-wrap items-center justify-start gap-2 text-xs text-muted-foreground sm:justify-end">
-                      <Badge variant={analysisSource === "cache" ? "secondary" : "default"}>
-                        {analysisSource === "cache" ? "历史结果" : "最新结果"}
-                      </Badge>
-                      {analysisTimestamp && <span>更新时间：{analysisTimestamp}</span>}
-                    </div>
-                  )}
-                </div>
+                )}
+                
+                {/* 第五行：已选择模板描述 */}
+                {selectedTemplateNames.length > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    已选择模板：{selectedTemplateNames.join("、")}
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="flex-1">
                 {templatesStatus === "error" && templatesError && (
@@ -1218,7 +1418,7 @@ export function ContractReviewInterface() {
                 ) : analysisStatus === "idle" ? (
                   <div className="flex h-[600px] items-center justify-center px-4 text-sm text-muted-foreground">
                     {markdownStatus === "success"
-                      ? "点击上方“开始智能分析”按钮以生成结果。"
+                      ? "点击上方“智能分析”按钮以生成结果。"
                       : "等待合同Markdown内容生成..."}
                   </div>
                 ) : templateOrder.length > 0 ? (
@@ -1254,7 +1454,7 @@ export function ContractReviewInterface() {
                                 <div className="space-y-1">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <h3 className="text-sm font-semibold text-foreground">{templateName}</h3>
-                                    <Badge variant="secondary" className="text-xs">
+                                    <Badge variant="accent" className="text-xs">
                                       {detection.extractedClauses.length} 项
                                     </Badge>
                                   </div>
@@ -1269,7 +1469,7 @@ export function ContractReviewInterface() {
                                     </Badge>
                                   )}
                                   {templateRiskCounts.medium > 0 && (
-                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                                    <Badge variant="warning" className="text-[10px] px-1.5 py-0.5">
                                       中风险 {templateRiskCounts.medium}
                                     </Badge>
                                   )}
@@ -1298,26 +1498,26 @@ export function ContractReviewInterface() {
                                     return (
                                       <AccordionItem key={`${templateId}-${category}`} value={`${templateId}-${category}`} className="border rounded-lg">
                                         <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                                          <div className="flex w-full items-center justify-between">
-                                            <div className="flex items-center gap-3">
+                                          <div className="flex w-full flex-col gap-2">
+                                            <div className="flex w-full items-center">
                                               <h4 className="text-sm font-medium">{category}</h4>
-                                              <Badge variant="secondary" className="text-xs">
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <Badge variant="accent" className="text-xs">
                                                 {items.length} 项
                                               </Badge>
-                                            </div>
-                                            <div className="flex items-center gap-1 pr-2">
                                               {categoryRiskCounts.high > 0 && (
                                                 <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
                                                   高风险 {categoryRiskCounts.high}
                                                 </Badge>
                                               )}
                                               {categoryRiskCounts.medium > 0 && (
-                                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                                                <Badge variant="warning" className="text-[10px] px-1.5 py-0.5">
                                                   中风险 {categoryRiskCounts.medium}
                                                 </Badge>
                                               )}
                                               {categoryRiskCounts.low > 0 && (
-                                                <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
+                                                <Badge variant="success" className="text-[10px] px-1.5 py-0.5">
                                                   低风险 {categoryRiskCounts.low}
                                                 </Badge>
                                               )}
@@ -1330,7 +1530,7 @@ export function ContractReviewInterface() {
                                               const isSelected =
                                                 selectedClauseRef?.templateId === templateId &&
                                                 selectedClauseRef.index === index
-                                              const snippet = clause.contractText || clause.location?.snippet || "暂无合同摘录"
+                                              const snippet = clause.contractText || "暂无合同摘录"
                                               const riskLevel = clause.risk?.level
 
                                               return (
@@ -1410,7 +1610,7 @@ export function ContractReviewInterface() {
             </Card>
 
           <Card className="flex flex-col min-h-[700px]">
-            <CardHeader>
+            <CardHeader className="space-y-1">
               <CardTitle>合同分析详情</CardTitle>
               <CardDescription>查看条款差异、风险等级与整改建议</CardDescription>
             </CardHeader>
@@ -1461,15 +1661,15 @@ export function ContractReviewInterface() {
                         <span className="text-xs uppercase tracking-wide text-muted-foreground">合同文本摘录</span>
                         <div className="space-y-2 rounded-md border bg-muted/40 p-3">
                           <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
-                            {selectedClause.contractText || selectedClause.location?.snippet || "暂无合同摘录"}
+                            {selectedClause.contractText || "暂无合同摘录"}
                           </p>
-                          {(selectedClause.contractText || selectedClause.location?.snippet) && (
+                          {(selectedClause.contractText) && (
                             <Button
                               variant="outline"
                               size="sm"
                               className="h-7 w-fit px-2 text-xs"
                               onClick={() =>
-                                navigateToText(selectedClause.contractText || selectedClause.location?.snippet || "")
+                                navigateToText(selectedClause.contractText || "")
                               }
                             >
                               在原文中定位
@@ -1477,23 +1677,6 @@ export function ContractReviewInterface() {
                           )}
                         </div>
                       </div>
-
-                      {selectedClause.location && (
-                        <div className="space-y-1">
-                          <span className="text-xs uppercase tracking-wide text-muted-foreground">合同中的位置</span>
-                          <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-                            {selectedClause.location.heading_path.length > 0 && (
-                              <p>路径：{selectedClause.location.heading_path.join(" › ")}</p>
-                            )}
-                            {selectedClause.location.section_title && (
-                              <p>章节：{selectedClause.location.section_title}</p>
-                            )}
-                            {selectedClause.location.snippet && (
-                              <p className="whitespace-pre-wrap">摘录：{selectedClause.location.snippet}</p>
-                            )}
-                          </div>
-                        </div>
-                      )}
 
                       {selectedClause.standardReference && (
                         <div className="space-y-1">

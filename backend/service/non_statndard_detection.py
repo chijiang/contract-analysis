@@ -2,14 +2,14 @@ from typing import List
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import PydanticOutputParser
 
-from models import LLMOutputResult, StandardClauses
-from prompts import DEVELOPER_PROMPT, SYSTEM_PROMPT
+from models import LlmAnalysisResult, StandardClauses
+from prompts import NON_STANDARD_ANALYSIS_DEVELOPER_PROMPT, NON_STANDARD_ANALYSIS_SYSTEM_PROMPT
 
 from config import LLM_MODEL, API_KEY, API_BASE_URL
 
 class NonStandardDetection:
     def __init__(self):
-        self.result_parser = PydanticOutputParser(pydantic_object=LLMOutputResult)
+        self.result_parser = PydanticOutputParser(pydantic_object=LlmAnalysisResult)
 
         self.llm = ChatOpenAI(
             model=LLM_MODEL, 
@@ -17,8 +17,8 @@ class NonStandardDetection:
             api_key=API_KEY,
             base_url=API_BASE_URL
         )
-        self.system_prompt = SYSTEM_PROMPT
-        self.developer_prompt = DEVELOPER_PROMPT
+        self.system_prompt = NON_STANDARD_ANALYSIS_SYSTEM_PROMPT
+        self.developer_prompt = NON_STANDARD_ANALYSIS_DEVELOPER_PROMPT
 
     async def output_format_refine(self, text: str):
         prompt = f"""
@@ -34,7 +34,7 @@ class NonStandardDetection:
         response = await self.llm.ainvoke(prompt)
         return response.content.strip().replace("```json", "").replace("```", "")
 
-    async def process(self, contract_text: str, standard_clauses: List[StandardClauses]):
+    async def process(self, contract_content: str, standard_clauses: List[StandardClauses]):
         standard_clauses = [{
                 "条款所属类别": clause.category,
                 "具体条款项": clause.item,
@@ -48,7 +48,7 @@ class NonStandardDetection:
             ("system", self.system_prompt.format(allowed_categories=allowed_categories)), 
             ("system", self.developer_prompt),
             ("system", f"输出格式: {self.result_parser.get_format_instructions()}"),
-            ("user", f"标准条款：\n{standard_clauses}\n\n合同文本：\n{contract_text}"),
+            ("user", f"标准条款：\n{standard_clauses}\n\n合同文本：\n{contract_content}"),
         ])
         text = response.content.strip().replace("```json", "").replace("```", "")
         try:
