@@ -14,7 +14,6 @@ import { Upload, FileText, Eye, Download, ChevronRight } from "lucide-react"
 import { DuplicateContractDialog } from "@/components/duplicate-contract-dialog"
 import { ContractAnalysisLoading } from "@/components/contract-analysis-loading"
 import { MarkdownViewer, MarkdownViewerRef } from "@/components/markdown-viewer"
-import { calculateClientFileHash } from "@/lib/client-hash"
 
 type ContractRecord = {
   id: string
@@ -28,24 +27,6 @@ type ContractRecord = {
   convertedAt: string
   createdAt: string
   updatedAt: string
-}
-
-type StandardClause = {
-  id: string
-  templateId: string
-  category: string
-  clauseItem: string
-  standard: string
-  riskLevel: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-type StandardClausePayload = {
-  category: string
-  item: string
-  standard_text: string
-  risk_level: string | null
 }
 
 type ContractTemplate = {
@@ -87,14 +68,28 @@ type AnalyzedClause = {
 
 type NonStandardDetectionResult = {
   extractedClauses: AnalyzedClause[]
-  missingStandardItems: string[]
+}
+
+type CategorizedClause = {
+  clause: AnalyzedClause
+  index: number
+}
+
+type StoredResultPayload = {
+  version?: number
+  resultsByTemplate?: Record<string, unknown>
+}
+
+type StoredClausesPayload = {
+  version?: number
+  clausesByTemplate?: Record<string, unknown>
 }
 
 type StoredAnalysisRecord = {
   id: string
   contractId: string
-  result: unknown
-  standardClauses: unknown
+  result: StoredResultPayload | null
+  standardClauses: StoredClausesPayload | null
   selectedTemplateIds: string[] | null
   createdAt: string
   updatedAt: string
@@ -121,34 +116,6 @@ const normalizeDetectionResult = (payload: unknown): NonStandardDetectionResult 
   )
     ? ((resultContainer as { extracted_clauses?: unknown }).extracted_clauses as Array<Record<string, unknown>>)
     : []
-
-  const missingStandardItemsRaw = Array.isArray(
-    resultContainer && typeof resultContainer === "object"
-      ? (resultContainer as { missing_standard_items?: unknown }).missing_standard_items
-      : null,
-  )
-    ? ((resultContainer as { missing_standard_items?: unknown }).missing_standard_items as Array<unknown>)
-    : []
-
-  // 处理 missing_standard_items 可能是对象数组的情况
-  const missingStandardItems = missingStandardItemsRaw.map((item) => {
-    if (typeof item === "string") {
-      return item
-    }
-    if (item && typeof item === "object") {
-      const itemObj = item as Record<string, unknown>
-      const category = typeof itemObj.clause_category === "string" ? itemObj.clause_category : ""
-      const clauseItem = typeof itemObj.clause_item === "string" ? itemObj.clause_item : ""
-      const whyImportant = typeof itemObj.why_important === "string" ? itemObj.why_important : ""
-      
-      // 组合成描述性字符串
-      if (category && clauseItem) {
-        return whyImportant ? `${category} - ${clauseItem}：${whyImportant}` : `${category} - ${clauseItem}`
-      }
-      return clauseItem || category || "未知条款"
-    }
-    return String(item || "")
-  })
 
   const extractedClauses: AnalyzedClause[] = extractedClausesRaw.map((clauseRecord) => {
     const categoryValue = clauseRecord?.["clause_category"]
@@ -225,9 +192,52 @@ const normalizeDetectionResult = (payload: unknown): NonStandardDetectionResult 
   })
 
   return {
-    extractedClauses,
-    missingStandardItems,
+    extractedClauses
   }
+}
+
+const normalizeResultsByTemplate = (
+  payload: StoredResultPayload | null,
+  templateIds: string[],
+): Record<string, NonStandardDetectionResult> => {
+  const normalized: Record<string, NonStandardDetectionResult> = {}
+  const fallbackTemplateId = templateIds[0]
+
+  if (!payload) {
+    return normalized
+  }
+
+  const results = payload.resultsByTemplate
+  if (!results || typeof results !== "object") {
+    if (fallbackTemplateId) {
+      normalized[fallbackTemplateId] = normalizeDetectionResult(payload as unknown)
+    }
+    return normalized
+  }
+
+  for (const [templateId, rawResult] of Object.entries(results)) {
+    if (templateId === "default" && fallbackTemplateId) {
+      normalized[fallbackTemplateId] = normalizeDetectionResult(rawResult)
+    } else {
+      normalized[templateId] = normalizeDetectionResult(rawResult)
+    }
+  }
+
+  return normalized
+}
+
+const pickFirstClauseRef = (
+  results: Record<string, NonStandardDetectionResult>,
+  templateOrder: string[],
+): { templateId: string; index: number } | null => {
+  const orderedTemplates = templateOrder.length > 0 ? templateOrder : Object.keys(results)
+  for (const templateId of orderedTemplates) {
+    const clauses = results[templateId]?.extractedClauses
+    if (clauses && clauses.length > 0) {
+      return { templateId, index: 0 }
+    }
+  }
+  return null
 }
 
 const formatDateTime = (value: string) => {
@@ -249,9 +259,6 @@ export function ContractReviewInterface() {
   const [contractRecord, setContractRecord] = useState<ContractRecord | null>(null)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle")
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [clauses, setClauses] = useState<StandardClause[]>([])
-  const [clausesStatus, setClausesStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
-  const [clausesError, setClausesError] = useState<string | null>(null)
   const [templates, setTemplates] = useState<ContractTemplate[]>([])
   const [templatesStatus, setTemplatesStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
   const [templatesError, setTemplatesError] = useState<string | null>(null)
@@ -262,10 +269,10 @@ export function ContractReviewInterface() {
   const [templateDialogError, setTemplateDialogError] = useState<string | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
   const [analysisError, setAnalysisError] = useState<string | null>(null)
-  const [analysisResult, setAnalysisResult] = useState<NonStandardDetectionResult | null>(null)
+  const [analysisResultsByTemplate, setAnalysisResultsByTemplate] = useState<Record<string, NonStandardDetectionResult>>({})
   const [analysisRecord, setAnalysisRecord] = useState<StoredAnalysisRecord | null>(null)
   const [analysisSource, setAnalysisSource] = useState<"fresh" | "cache" | null>(null)
-  const [selectedAnalysisIndex, setSelectedAnalysisIndex] = useState<number | null>(null)
+  const [selectedClauseRef, setSelectedClauseRef] = useState<{ templateId: string; index: number } | null>(null)
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
   const [existingContract, setExistingContract] = useState<{
     id: string
@@ -428,12 +435,21 @@ export function ContractReviewInterface() {
           if (analysisResponse.ok) {
             const data = await analysisResponse.json()
             if (data?.analysis) {
-              const normalized = normalizeDetectionResult(data.analysis.result)
-              setAnalysisResult(normalized)
+              const selectedIds = Array.isArray(data.analysis.selectedTemplateIds)
+                ? data.analysis.selectedTemplateIds.filter((value: unknown) =>
+                    typeof value === "string" && value.length > 0,
+                  )
+                : []
+              const normalizedMap = normalizeResultsByTemplate(
+                data.analysis.result,
+                selectedIds,
+              )
+              setAnalysisResultsByTemplate(normalizedMap)
               setAnalysisRecord(data.analysis)
               setAnalysisSource(data.source ?? "cache")
               setAnalysisStatus("success")
-              setSelectedAnalysisIndex(normalized.extractedClauses.length ? 0 : null)
+              setSelectedTemplateIds(selectedIds)
+              setSelectedClauseRef(pickFirstClauseRef(normalizedMap, selectedIds))
             }
           }
         } catch (error) {
@@ -470,31 +486,6 @@ export function ContractReviewInterface() {
     // 继续正常的markdown转换流程
     // 这里不需要做其他事情，因为convertPdfToMarkdown会在useEffect中被调用
   }, [pendingFile])
-
-  const loadExistingAnalysis = useCallback(async (contractId: string) => {
-    try {
-      setAnalysisStatus("loading")
-      setAnalysisError(null)
-      
-      const response = await fetch(`/api/contracts/${contractId}/analysis`)
-      if (!response.ok) {
-        throw new Error(`加载分析结果失败，状态码 ${response.status}`)
-      }
-      
-      const data = await response.json()
-      if (data?.analysis) {
-        const normalized = normalizeDetectionResult(data.analysis.result)
-        setAnalysisResult(normalized)
-        setAnalysisRecord(data.analysis)
-        setAnalysisSource(data.source ?? "cache")
-        setAnalysisStatus("success")
-        setSelectedAnalysisIndex(normalized.extractedClauses.length ? 0 : null)
-      }
-    } catch (error) {
-      setAnalysisStatus("error")
-      setAnalysisError(error instanceof Error ? error.message : "加载分析结果失败")
-    }
-  }, [])
 
   const convertPdfToMarkdown = useCallback(
     async (file: File) => {
@@ -559,10 +550,10 @@ export function ContractReviewInterface() {
       setSaveError(null)
       setAnalysisStatus("idle")
       setAnalysisError(null)
-      setAnalysisResult(null)
+      setAnalysisResultsByTemplate({})
       setAnalysisRecord(null)
       setAnalysisSource(null)
-      setSelectedAnalysisIndex(null)
+      setSelectedClauseRef(null)
       setFileHash(null)
       setSkipMarkdownConversion(false)
       return
@@ -578,10 +569,10 @@ export function ContractReviewInterface() {
     setSaveError(null)
     setAnalysisStatus("idle")
     setAnalysisError(null)
-    setAnalysisResult(null)
+    setAnalysisResultsByTemplate({})
     setAnalysisRecord(null)
     setAnalysisSource(null)
-    setSelectedAnalysisIndex(null)
+    setSelectedClauseRef(null)
 
     void convertPdfToMarkdown(uploadedFile)
 
@@ -594,10 +585,10 @@ export function ContractReviewInterface() {
     if (markdownStatus !== "success" || !markdownContent) {
       setAnalysisStatus("idle")
       setAnalysisError(null)
-      setAnalysisResult(null)
+      setAnalysisResultsByTemplate({})
       setAnalysisRecord(null)
       setAnalysisSource(null)
-      setSelectedAnalysisIndex(null)
+      setSelectedClauseRef(null)
     }
   }, [markdownContent, markdownStatus])
 
@@ -629,11 +620,10 @@ export function ContractReviewInterface() {
         if (!force) {
           const getResponse = await fetch(`/api/contracts/${contractRecord.id}/analysis`)
           if (getResponse.ok) {
-            const existingData = await getResponse.json()
+            const existingData = (await getResponse.json()) as AnalyzeContractResponse
             if (existingData?.analysis) {
               const storedTemplateIds = Array.isArray(existingData.analysis.selectedTemplateIds)
-                ? (existingData.analysis.selectedTemplateIds as unknown[])
-                    .filter((value): value is string => typeof value === "string" && value.length > 0)
+                ? existingData.analysis.selectedTemplateIds.filter((value) => typeof value === "string" && value.length > 0)
                 : []
 
               const requestedSorted = [...templateIds].sort()
@@ -643,72 +633,21 @@ export function ContractReviewInterface() {
                 requestedSorted.every((id, index) => id === storedSorted[index])
 
               if (sameTemplates) {
-                const normalized = normalizeDetectionResult(existingData.analysis.result)
+                const normalizedMap = normalizeResultsByTemplate(
+                  existingData.analysis.result,
+                  storedTemplateIds.length > 0 ? storedTemplateIds : templateIds,
+                )
                 setSelectedTemplateIds(storedTemplateIds)
-                setAnalysisResult(normalized)
+                setAnalysisResultsByTemplate(normalizedMap)
                 setAnalysisRecord(existingData.analysis)
                 setAnalysisSource("cache")
                 setAnalysisStatus("success")
-                setSelectedAnalysisIndex(normalized.extractedClauses.length ? 0 : null)
+                setSelectedClauseRef(pickFirstClauseRef(normalizedMap, storedTemplateIds))
                 return
               }
             }
           }
         }
-
-        setClausesStatus("loading")
-        setClausesError(null)
-
-        let clausePayload: StandardClausePayload[] = []
-
-        try {
-          const query = templateIds.map((id) => `templateId=${encodeURIComponent(id)}`).join("&")
-          const response = await fetch(`/api/standard-clauses?${query}`)
-          if (!response.ok) {
-            const payload = await response.json().catch(() => null)
-            throw new Error(payload?.message ?? `加载标准条款失败，状态码 ${response.status}`)
-          }
-
-          const data = (await response.json()) as StandardClause[]
-          const normalizedClauses = data.map((clause) => ({
-            ...clause,
-            riskLevel: clause.riskLevel ?? null,
-          }))
-          setClauses(normalizedClauses)
-          clausePayload = normalizedClauses.map((clause) => ({
-            category: clause.category,
-            item: clause.clauseItem,
-            standard_text: clause.standard,
-            risk_level: clause.riskLevel ?? null,
-          }))
-          setClausesStatus("success")
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "加载标准条款失败"
-          setClausesStatus("error")
-          setClausesError(message)
-          setClauses([])
-          setAnalysisStatus("error")
-          setAnalysisError(message)
-          setAnalysisResult(null)
-          setAnalysisRecord(null)
-          setAnalysisSource(null)
-          setSelectedAnalysisIndex(null)
-          return
-        }
-
-        if (clausePayload.length === 0) {
-          const message = "所选模板下暂无标准条款，无法执行分析"
-          setClauses([])
-          setAnalysisStatus("error")
-          setAnalysisError(message)
-          setAnalysisResult(null)
-          setAnalysisRecord(null)
-          setAnalysisSource(null)
-          setSelectedAnalysisIndex(null)
-          return
-        }
-
-        setSelectedTemplateIds(templateIds)
 
         const response = await fetch(`/api/contracts/${contractRecord.id}/analysis`, {
           method: "POST",
@@ -717,7 +656,6 @@ export function ContractReviewInterface() {
           },
           body: JSON.stringify({
             markdown,
-            standard_clauses: clausePayload,
             template_ids: templateIds,
             ...(force ? { force: true } : {}),
           }),
@@ -733,20 +671,25 @@ export function ContractReviewInterface() {
           throw new Error("分析接口返回结果无效")
         }
 
-        const normalized = normalizeDetectionResult(data.analysis.result)
+        const resultTemplateIds = Array.isArray(data.analysis.selectedTemplateIds)
+          ? data.analysis.selectedTemplateIds.filter((value) => typeof value === "string" && value.length > 0)
+          : templateIds
 
-        setAnalysisResult(normalized)
+        const normalizedMap = normalizeResultsByTemplate(data.analysis.result, resultTemplateIds)
+
+        setAnalysisResultsByTemplate(normalizedMap)
         setAnalysisRecord(data.analysis)
         setAnalysisSource(data.source ?? "fresh")
         setAnalysisStatus("success")
-        setSelectedAnalysisIndex(normalized.extractedClauses.length ? 0 : null)
+        setSelectedTemplateIds(resultTemplateIds)
+        setSelectedClauseRef(pickFirstClauseRef(normalizedMap, resultTemplateIds))
       } catch (error) {
         setAnalysisStatus("error")
         setAnalysisError(error instanceof Error ? error.message : "分析失败，请稍后重试")
-        setAnalysisResult(null)
+        setAnalysisResultsByTemplate({})
         setAnalysisRecord(null)
         setAnalysisSource(null)
-        setSelectedAnalysisIndex(null)
+        setSelectedClauseRef(null)
       }
     },
     [contractRecord, markdownContent],
@@ -877,7 +820,6 @@ export function ContractReviewInterface() {
     markdownStatus !== "success" ||
     !contractRecord ||
     saveStatus !== "success" ||
-    clausesStatus === "loading" ||
     templatesStatus !== "success" ||
     templates.length === 0
 
@@ -892,27 +834,77 @@ export function ContractReviewInterface() {
       .filter((name): name is string => typeof name === "string" && name.length > 0)
   }, [selectedTemplateIds, templates, templatesStatus])
 
-  // 按条款类型分组条款
-  const groupedClauses = useMemo(() => {
-    if (!analysisResult?.extractedClauses) return {}
-    
-    const groups: Record<string, AnalyzedClause[]> = {}
-    analysisResult.extractedClauses.forEach((clause) => {
-      const category = clause.clauseCategory || "未分类"
-      if (!groups[category]) {
-        groups[category] = []
-      }
-      groups[category].push(clause)
+  const templatesById = useMemo(() => {
+    const map = new Map<string, ContractTemplate>()
+    templates.forEach((template) => {
+      map.set(template.id, template)
     })
-    
-    return groups
-  }, [analysisResult])
+    return map
+  }, [templates])
 
-  const handleClauseSelect = useCallback((clause: AnalyzedClause) => {
-    if (!analysisResult?.extractedClauses) return
-    const index = analysisResult.extractedClauses.indexOf(clause)
-    setSelectedAnalysisIndex(index >= 0 ? index : null)
-  }, [analysisResult])
+  const templateOrder = useMemo(() => {
+    const ordered = selectedTemplateIds.filter((id) => analysisResultsByTemplate[id])
+    const additional = Object.keys(analysisResultsByTemplate).filter((id) => !ordered.includes(id))
+    return [...ordered, ...additional]
+  }, [analysisResultsByTemplate, selectedTemplateIds])
+
+  const groupedClausesByTemplate = useMemo(() => {
+    const result: Record<string, Record<string, CategorizedClause[]>> = {}
+    Object.entries(analysisResultsByTemplate).forEach(([templateId, detection]) => {
+      const groups: Record<string, CategorizedClause[]> = {}
+      detection.extractedClauses.forEach((clause, index) => {
+        const category = clause.clauseCategory || "未分类"
+        if (!groups[category]) {
+          groups[category] = []
+        }
+        groups[category].push({ clause, index })
+      })
+      result[templateId] = groups
+    })
+    return result
+  }, [analysisResultsByTemplate])
+
+  const handleClauseSelect = useCallback((templateId: string, index: number) => {
+    setSelectedClauseRef({ templateId, index })
+  }, [])
+
+  useEffect(() => {
+    const hasResults = Object.keys(analysisResultsByTemplate).length > 0
+
+    if (!hasResults) {
+      if (selectedClauseRef !== null) {
+        setSelectedClauseRef(null)
+      }
+      return
+    }
+
+    if (
+      !selectedClauseRef ||
+      !analysisResultsByTemplate[selectedClauseRef.templateId] ||
+      !analysisResultsByTemplate[selectedClauseRef.templateId].extractedClauses[selectedClauseRef.index]
+    ) {
+      const fallbackRef = pickFirstClauseRef(analysisResultsByTemplate, templateOrder)
+      if (
+        fallbackRef?.templateId !== selectedClauseRef?.templateId ||
+        fallbackRef?.index !== selectedClauseRef?.index
+      ) {
+        setSelectedClauseRef(fallbackRef ?? null)
+      }
+    }
+  }, [analysisResultsByTemplate, selectedClauseRef, templateOrder])
+
+  const selectedClause = useMemo(() => {
+    if (!selectedClauseRef) return null
+    const detection = analysisResultsByTemplate[selectedClauseRef.templateId]
+    if (!detection) return null
+    return detection.extractedClauses[selectedClauseRef.index] ?? null
+  }, [analysisResultsByTemplate, selectedClauseRef])
+
+  const selectedClauseTemplate = useMemo(() => {
+    if (!selectedClauseRef) return null
+    return templatesById.get(selectedClauseRef.templateId) ?? null
+  }, [selectedClauseRef, templatesById])
+
 
   const templateDialogTitle = pendingAnalysisAction === "reprocess" ? "重新处理前选择模板" : "选择产品合同模板"
   const templateDialogDescription =
@@ -1215,139 +1207,204 @@ export function ContractReviewInterface() {
                     暂无可用的产品合同模板，请先在标准条款管理页面创建后再试。
                   </div>
                 )}
-                {clausesStatus === "error" && (
-                  <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                    标准条款库加载失败，分析结果可能不完整：{clausesError ?? "请稍后重试"}
+                {analysisStatus === "loading" ? (
+                  <div className="flex h-[600px] items-center justify-center">
+                    <ContractAnalysisLoading />
                   </div>
-                )}
-                {analysisStatus === "loading" && (
-                  <ContractAnalysisLoading />
-                )}
-                {analysisStatus === "error" && (
+                ) : analysisStatus === "error" ? (
                   <div className="flex h-[600px] items-center justify-center px-4 text-center text-sm text-destructive">
                     {analysisError ?? "分析失败，请稍后重试"}
                   </div>
-                )}
-                {analysisStatus === "idle" && (
+                ) : analysisStatus === "idle" ? (
                   <div className="flex h-[600px] items-center justify-center px-4 text-sm text-muted-foreground">
                     {markdownStatus === "success"
                       ? "点击上方“开始智能分析”按钮以生成结果。"
                       : "等待合同Markdown内容生成..."}
                   </div>
-                )}
-                {analysisStatus === "success" && analysisResult && (
-                  Object.keys(groupedClauses).length > 0 ? (
-                    <div className="pb-4">
-                      <ScrollArea className="h-[600px]">
-                        <div className="space-y-2 pr-1 pb-4">
-                          <Accordion type="multiple" className="w-full">
-                          {Object.entries(groupedClauses).map(([category, clauses]) => {
-                            const categoryRiskCounts = clauses.reduce((acc, clause) => {
+                ) : templateOrder.length > 0 ? (
+                  <div className="pb-4">
+                    <ScrollArea className="h-[600px]">
+                      <div className="space-y-4 pr-1 pb-4">
+                        {templateOrder.map((templateId) => {
+                          const detection = analysisResultsByTemplate[templateId]
+                          if (!detection) return null
+
+                          const categoryGroups = groupedClausesByTemplate[templateId] ?? {}
+                          const categoryEntries = Object.entries(categoryGroups)
+                          const templateMeta = templatesById.get(templateId)
+                          const templateName = templateMeta?.name ?? `模板 ${templateId}`
+                          const templateDescription = templateMeta?.description ?? null
+                          const templateRiskCounts = detection.extractedClauses.reduce(
+                            (acc, clause) => {
                               const level = clause.risk?.level?.toLowerCase()
-                              if (level?.includes('high') || level?.includes('高')) acc.high++
-                              else if (level?.includes('medium') || level?.includes('中')) acc.medium++
-                              else if (level?.includes('low') || level?.includes('低')) acc.low++
+                              if (level?.includes("high") || level?.includes("高")) acc.high += 1
+                              else if (level?.includes("medium") || level?.includes("中")) acc.medium += 1
+                              else if (level?.includes("low") || level?.includes("低")) acc.low += 1
                               return acc
-                            }, { high: 0, medium: 0, low: 0 })
-                            
-                            return (
-                              <AccordionItem key={category} value={category} className="border rounded-lg">
-                                <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                                  <div className="flex items-center justify-between w-full">
-                                    <div className="flex items-center gap-3">
-                                      <h3 className="text-sm font-medium">{category}</h3>
-                                      <Badge variant="secondary" className="text-xs">
-                                        {clauses.length} 项
-                                      </Badge>
-                                    </div>
-                                    <div className="flex items-center gap-1 mr-2">
-                                      {categoryRiskCounts.high > 0 && (
-                                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
-                                          高风险 {categoryRiskCounts.high}
-                                        </Badge>
-                                      )}
-                                      {categoryRiskCounts.medium > 0 && (
-                                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
-                                          中风险 {categoryRiskCounts.medium}
-                                        </Badge>
-                                      )}
-                                      {categoryRiskCounts.low > 0 && (
-                                        <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
-                                          低风险 {categoryRiskCounts.low}
-                                        </Badge>
-                                      )}
-                                    </div>
+                            },
+                            { high: 0, medium: 0, low: 0 },
+                          )
+
+                          return (
+                            <div
+                              key={templateId}
+                              className="space-y-3 rounded-lg border border-border bg-background/80 p-4 shadow-sm"
+                            >
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-sm font-semibold text-foreground">{templateName}</h3>
+                                    <Badge variant="secondary" className="text-xs">
+                                      {detection.extractedClauses.length} 项
+                                    </Badge>
                                   </div>
-                                </AccordionTrigger>
-                                <AccordionContent className="px-4 pb-3">
-                                  <div className="space-y-2">
-                                    {clauses.map((clause, clauseIndex) => {
-                                      const globalIndex = analysisResult.extractedClauses.indexOf(clause)
-                                      const isSelected = selectedAnalysisIndex === globalIndex
-                                      const snippet = clause.contractText || clause.location?.snippet || "暂无合同摘录"
-                                      const riskLevel = clause.risk?.level
-                                      
-                                      return (
-                                        <Card
-                                          key={`${clause.clauseCategory}-${clause.clauseItem}-${clauseIndex}`}
-                                          className={`cursor-pointer transition-colors hover:bg-muted/50 ${
-                                            isSelected ? "ring-2 ring-primary" : ""
-                                          }`}
-                                          onClick={() => handleClauseSelect(clause)}
-                                        >
-                                          <CardContent className="flex flex-col gap-2 p-3">
-                                            <div className="flex items-start justify-between gap-2">
-                                              <div className="flex flex-col gap-1">
-                                                <h4 className="text-sm font-medium text-foreground">{clause.clauseItem}</h4>
-                                                <p className={`text-xs font-medium ${getComplianceClassName(clause.compliance)}`}>
-                                                  {clause.compliance ?? "未标注合规性"}
-                                                </p>
-                                              </div>
-                                              <div className="flex items-center gap-1">
-                                                {riskLevel ? (
-                                                  <Badge variant={getRiskBadgeVariant(riskLevel)} className="text-[10px]">
-                                                    {riskLevel}
-                                                  </Badge>
-                                                ) : (
-                                                  <Badge variant="outline" className="text-[10px]">未评估</Badge>
-                                                )}
-                                                <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                                              </div>
+                                  {templateDescription && (
+                                    <p className="text-xs text-muted-foreground">{templateDescription}</p>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                  {templateRiskCounts.high > 0 && (
+                                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
+                                      高风险 {templateRiskCounts.high}
+                                    </Badge>
+                                  )}
+                                  {templateRiskCounts.medium > 0 && (
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                                      中风险 {templateRiskCounts.medium}
+                                    </Badge>
+                                  )}
+                                  {templateRiskCounts.low > 0 && (
+                                    <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
+                                      低风险 {templateRiskCounts.low}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+
+                              {categoryEntries.length > 0 ? (
+                                <Accordion type="multiple" className="w-full">
+                                  {categoryEntries.map(([category, items]) => {
+                                    const categoryRiskCounts = items.reduce(
+                                      (acc, item) => {
+                                        const level = item.clause.risk?.level?.toLowerCase()
+                                        if (level?.includes("high") || level?.includes("高")) acc.high += 1
+                                        else if (level?.includes("medium") || level?.includes("中")) acc.medium += 1
+                                        else if (level?.includes("low") || level?.includes("低")) acc.low += 1
+                                        return acc
+                                      },
+                                      { high: 0, medium: 0, low: 0 },
+                                    )
+
+                                    return (
+                                      <AccordionItem key={`${templateId}-${category}`} value={`${templateId}-${category}`} className="border rounded-lg">
+                                        <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                                          <div className="flex w-full items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                              <h4 className="text-sm font-medium">{category}</h4>
+                                              <Badge variant="secondary" className="text-xs">
+                                                {items.length} 项
+                                              </Badge>
                                             </div>
-                                            <div className="space-y-1">
-                                              <p className="text-xs text-muted-foreground line-clamp-2 whitespace-pre-wrap">
-                                                {snippet}
-                                              </p>
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-5 px-1 text-[10px] text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  navigateToText(snippet)
-                                                }}
-                                              >
-                                                🔍 查看原文
-                                              </Button>
+                                            <div className="flex items-center gap-1 pr-2">
+                                              {categoryRiskCounts.high > 0 && (
+                                                <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
+                                                  高风险 {categoryRiskCounts.high}
+                                                </Badge>
+                                              )}
+                                              {categoryRiskCounts.medium > 0 && (
+                                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                                                  中风险 {categoryRiskCounts.medium}
+                                                </Badge>
+                                              )}
+                                              {categoryRiskCounts.low > 0 && (
+                                                <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
+                                                  低风险 {categoryRiskCounts.low}
+                                                </Badge>
+                                              )}
                                             </div>
-                                          </CardContent>
-                                        </Card>
-                                      )
-                                    })}
-                                  </div>
-                                </AccordionContent>
-                              </AccordionItem>
-                            )
-                          })}
-                        </Accordion>
-                        </div>
-                      </ScrollArea>
-                    </div>
-                  ) : (
-                    <div className="flex h-[600px] items-center justify-center px-4 text-sm text-muted-foreground">
-                      未识别到合同条款，请确认原文内容是否完整。
-                    </div>
-                  )
+                                          </div>
+                                        </AccordionTrigger>
+                                        <AccordionContent className="px-4 pb-3">
+                                          <div className="space-y-2">
+                                            {items.map(({ clause, index }) => {
+                                              const isSelected =
+                                                selectedClauseRef?.templateId === templateId &&
+                                                selectedClauseRef.index === index
+                                              const snippet = clause.contractText || clause.location?.snippet || "暂无合同摘录"
+                                              const riskLevel = clause.risk?.level
+
+                                              return (
+                                                <Card
+                                                  key={`${templateId}-${category}-${clause.clauseItem}-${index}`}
+                                                  className={`cursor-pointer transition-colors hover:bg-muted/50 ${
+                                                    isSelected ? "ring-2 ring-primary" : ""
+                                                  }`}
+                                                  onClick={() => handleClauseSelect(templateId, index)}
+                                                >
+                                                  <CardContent className="flex flex-col gap-2 p-3">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                      <div className="flex flex-col gap-1">
+                                                        <h5 className="text-sm font-medium text-foreground">{clause.clauseItem}</h5>
+                                                        <p
+                                                          className={`text-xs font-medium ${getComplianceClassName(clause.compliance)}`}
+                                                        >
+                                                          {clause.compliance ?? "未标注合规性"}
+                                                        </p>
+                                                      </div>
+                                                      <div className="flex items-center gap-1">
+                                                        {riskLevel ? (
+                                                          <Badge variant={getRiskBadgeVariant(riskLevel)} className="text-[10px]">
+                                                            {riskLevel}
+                                                          </Badge>
+                                                        ) : (
+                                                          <Badge variant="outline" className="text-[10px]">
+                                                            未评估
+                                                          </Badge>
+                                                        )}
+                                                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                                                      </div>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                      <p className="text-xs text-muted-foreground line-clamp-2 whitespace-pre-wrap">
+                                                        {snippet}
+                                                      </p>
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-5 px-1 text-[10px] text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                        onClick={(event) => {
+                                                          event.stopPropagation()
+                                                          navigateToText(snippet)
+                                                        }}
+                                                      >
+                                                        🔍 查看原文
+                                                      </Button>
+                                                    </div>
+                                                  </CardContent>
+                                                </Card>
+                                              )
+                                            })}
+                                          </div>
+                                        </AccordionContent>
+                                      </AccordionItem>
+                                    )
+                                  })}
+                                </Accordion>
+                              ) : (
+                                <div className="flex items-center justify-center rounded-md border border-dashed border-muted-foreground/40 px-4 py-6 text-sm text-muted-foreground">
+                                  未识别到与该模板匹配的条款。
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                ) : (
+                  <div className="flex h-[600px] items-center justify-center px-4 text-sm text-muted-foreground">
+                    未识别到合同条款，请确认原文内容是否完整。
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -1358,172 +1415,139 @@ export function ContractReviewInterface() {
               <CardDescription>查看条款差异、风险等级与整改建议</CardDescription>
             </CardHeader>
             <CardContent className="flex-1">
-              {analysisStatus === "loading" && (
-                <div className="flex h-[600px] items-center justify-center text-sm text-muted-foreground">
-                  正在生成分析详情...
+              {analysisStatus === "loading" ? (
+                <div className="flex h-[600px] items-center justify-center">
+                  <ContractAnalysisLoading />
                 </div>
-              )}
-              {analysisStatus === "error" && (
+              ) : analysisStatus === "error" ? (
                 <div className="flex h-[600px] items-center justify-center px-4 text-center text-sm text-destructive">
                   {analysisError ?? "分析失败，请稍后重试"}
                 </div>
-              )}
-              {analysisStatus === "idle" && (
+              ) : analysisStatus === "idle" ? (
                 <div className="flex h-[600px] items-center justify-center px-4 text-sm text-muted-foreground">
                   {markdownStatus === "success"
-                    ? "点击左侧“开始智能分析”按钮后可查看详细结果。"
-                    : "待合同内容转换完成后可查看分析详情。"}
+                    ? "等待生成分析结果后可查看详细信息。"
+                    : "合同Markdown尚未生成，暂无法展示详情。"}
                 </div>
-              )}
-              {analysisStatus === "success" && analysisResult && (
-                selectedAnalysisIndex != null && analysisResult.extractedClauses[selectedAnalysisIndex] ? (
-                  <ScrollArea className="h-[600px]">
-                    <div className="space-y-5 pr-1">
-                      {(() => {
-                        const clause = analysisResult.extractedClauses[selectedAnalysisIndex]
-                        const locationPath = clause.location?.heading_path?.length
-                          ? clause.location.heading_path.join(" > ")
-                          : null
-                        return (
-                          <>
-                            {/* 条款基本信息 */}
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <div className="space-y-1">
-                                  <span className="text-xs uppercase tracking-wide text-muted-foreground">条款类别</span>
-                                  <p className="text-sm font-medium">{clause.clauseCategory}</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant={getComplianceBadgeVariant(clause.compliance)}>
-                                    {clause.compliance ?? "未标注合规性"}
-                                  </Badge>
-                                  {clause.risk?.level && (
-                                    <Badge variant={getRiskBadgeVariant(clause.risk.level)}>
-                                      {clause.risk.level}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="space-y-1">
-                                <span className="text-xs uppercase tracking-wide text-muted-foreground">条款项名称</span>
-                                <h2 className="text-lg font-semibold text-foreground">{clause.clauseItem}</h2>
-                              </div>
-                            </div>
-                            {/* 合同内容 */}
-                            {clause.contractText && (
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs uppercase tracking-wide text-muted-foreground">合同摘录</span>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                    onClick={() => navigateToText(clause.contractText)}
-                                  >
-                                    📍 定位原文
-                                  </Button>
-                                </div>
-                                <div 
-                                  className="rounded-lg border bg-blue-50/50 p-4 cursor-pointer transition-all hover:bg-blue-100/50 hover:border-blue-300"
-                                  onClick={() => navigateToText(clause.contractText)}
-                                >
-                                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                                    {clause.contractText}
-                                  </p>
-                                  <div className="mt-2 text-xs text-blue-600/70 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    点击跳转到原文位置
-                                  </div>
-                                </div>
-                              </div>
+              ) : selectedClause ? (
+                <ScrollArea className="h-[600px]">
+                  <div className="space-y-4 pr-1 pb-4">
+                    <div className="space-y-4 rounded-lg border border-border bg-background p-4 shadow-sm">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          {selectedClauseTemplate && (
+                            <Badge variant="outline" className="text-[10px]">
+                              {selectedClauseTemplate.name}
+                            </Badge>
+                          )}
+                          <span>类别：{selectedClause.clauseCategory || "未分类"}</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-lg font-semibold text-foreground">{selectedClause.clauseItem}</h3>
+                          {selectedClause.compliance && (
+                            <Badge variant={getComplianceBadgeVariant(selectedClause.compliance)} className="text-xs">
+                              {selectedClause.compliance}
+                            </Badge>
+                          )}
+                          {selectedClause.risk?.level && (
+                            <Badge variant={getRiskBadgeVariant(selectedClause.risk.level)} className="text-xs">
+                              {selectedClause.risk.level}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-xs uppercase tracking-wide text-muted-foreground">合同文本摘录</span>
+                        <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+                            {selectedClause.contractText || selectedClause.location?.snippet || "暂无合同摘录"}
+                          </p>
+                          {(selectedClause.contractText || selectedClause.location?.snippet) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 w-fit px-2 text-xs"
+                              onClick={() =>
+                                navigateToText(selectedClause.contractText || selectedClause.location?.snippet || "")
+                              }
+                            >
+                              在原文中定位
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectedClause.location && (
+                        <div className="space-y-1">
+                          <span className="text-xs uppercase tracking-wide text-muted-foreground">合同中的位置</span>
+                          <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                            {selectedClause.location.heading_path.length > 0 && (
+                              <p>路径：{selectedClause.location.heading_path.join(" › ")}</p>
                             )}
-                            {/* 条款位置 */}
-                            {(clause.location?.section_title || locationPath || clause.location?.snippet) && (
-                              <div className="space-y-1">
-                                <span className="text-xs uppercase tracking-wide text-muted-foreground">条款位置</span>
-                                <div className="space-y-1 text-sm text-muted-foreground">
-                                  {clause.location?.section_title && (
-                                    <p className="font-medium text-foreground">{clause.location.section_title}</p>
-                                  )}
-                                  {locationPath && (
-                                    <p className="text-xs">路径：{locationPath}</p>
-                                  )}
-                                  {clause.location?.snippet && (
-                                    <p className="whitespace-pre-wrap text-xs bg-muted/30 p-2 rounded">
-                                      {clause.location.snippet}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
+                            {selectedClause.location.section_title && (
+                              <p>章节：{selectedClause.location.section_title}</p>
                             )}
-                            {/* 标准条款参考 */}
-                            {clause.standardReference && (
-                              <div className="space-y-1">
-                                <span className="text-xs uppercase tracking-wide text-muted-foreground">标准条款参考</span>
-                                <div className="rounded-lg border bg-green-50/50 p-4">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <Badge variant="secondary" className="text-xs">
-                                      {clause.standardReference.clause_category}
-                                    </Badge>
-                                    <span className="text-sm font-medium text-foreground">
-                                      {clause.standardReference.clause_item}
-                                    </span>
-                                  </div>
-                                  <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                                    {clause.standardReference.standard_text}
-                                  </p>
-                                </div>
-                              </div>
+                            {selectedClause.location.snippet && (
+                              <p className="whitespace-pre-wrap">摘录：{selectedClause.location.snippet}</p>
                             )}
-                            {/* 风险评估 */}
-                            {clause.risk && (clause.risk.opinion || clause.risk.recommendation) && (
-                              <div className="space-y-3">
-                                <span className="text-xs uppercase tracking-wide text-muted-foreground">风险评估</span>
-                                <div className="rounded-lg border bg-amber-50/50 p-4 space-y-3">
-                                  {clause.risk.opinion && (
-                                    <div className="space-y-1">
-                                      <h4 className="text-sm font-medium text-foreground">风险说明</h4>
-                                      <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                                        {clause.risk.opinion}
-                                      </p>
-                                    </div>
-                                  )}
-                                  {clause.risk.recommendation && (
-                                    <div className="space-y-1">
-                                      <h4 className="text-sm font-medium text-foreground">整改建议</h4>
-                                      <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                                        {clause.risk.recommendation}
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )
-                      })()}
-                      {/* {analysisResult.missingStandardItems.length > 0 && (
-                        <div className="space-y-2 rounded-md border border-dashed border-muted-foreground/40 p-3">
-                          <span className="text-xs uppercase tracking-wide text-muted-foreground">缺失的标准条款</span>
-                          <div className="space-y-1 text-xs text-muted-foreground">
-                            {analysisResult.missingStandardItems.map((item, index) => (
-                              <p key={`${item}-${index}`}>- {item}</p>
-                            ))}
                           </div>
                         </div>
-                      )} */}
-                    </div>
-                  </ScrollArea>
-                ) : (
-                  <div className="flex h-[600px] items-center justify-center px-4 text-center">
-                    <div className="space-y-2">
-                      <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground font-medium">请选择一个条款查看详情</p>
-                      <p className="text-xs text-muted-foreground">
-                        点击左侧分析结果中的任意条款，即可在此处查看详细信息
-                      </p>
+                      )}
+
+                      {selectedClause.standardReference && (
+                        <div className="space-y-1">
+                          <span className="text-xs uppercase tracking-wide text-muted-foreground">标准条款参考</span>
+                          <div className="space-y-2 rounded-lg border bg-green-50/50 p-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="secondary" className="text-xs">
+                                {selectedClause.standardReference.clause_category}
+                              </Badge>
+                              <span className="text-sm font-medium text-foreground">
+                                {selectedClause.standardReference.clause_item}
+                              </span>
+                            </div>
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                              {selectedClause.standardReference.standard_text}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedClause.risk && (selectedClause.risk.opinion || selectedClause.risk.recommendation) && (
+                        <div className="space-y-3">
+                          <span className="text-xs uppercase tracking-wide text-muted-foreground">风险评估</span>
+                          <div className="space-y-3 rounded-lg border bg-amber-50/50 p-4">
+                            {selectedClause.risk.opinion && (
+                              <div className="space-y-1">
+                                <h4 className="text-sm font-medium text-foreground">风险说明</h4>
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                                  {selectedClause.risk.opinion}
+                                </p>
+                              </div>
+                            )}
+                            {selectedClause.risk.recommendation && (
+                              <div className="space-y-1">
+                                <h4 className="text-sm font-medium text-foreground">整改建议</h4>
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                                  {selectedClause.risk.recommendation}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                )
+                </ScrollArea>
+              ) : (
+                <div className="flex h-[600px] items-center justify-center px-4 text-center text-sm text-muted-foreground">
+                  <div className="space-y-2">
+                    <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
+                    <p className="font-medium">请选择一个条款查看详情</p>
+                    <p className="text-xs">在左侧结果中选择条款即可查看详细分析。</p>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
