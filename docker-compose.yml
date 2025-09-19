@@ -7,9 +7,9 @@ services:
     env_file:
       - backend/.env.backend
     environment:
-      - PORT=8000
+      - PORT=6688
     ports:
-      - "8000:8000"
+      - "6688:6688"
     networks:
       - appnet
 
@@ -21,11 +21,13 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=file:./prisma/dev.db
-      - NEXT_PUBLIC_API_BASE_URL=http://backend:8000
+      - NEXT_PUBLIC_API_BASE_URL=http://contract-backend:6688
+      - NON_STANDARD_ANALYSIS_API_BASE_URL=http://contract-backend:6688
       - FILE_STORAGE_PROVIDER=local
       - LOCAL_STORAGE_ROOT=/app/storage/uploads
+      - NODE_OPTIONS=--dns-result-order=ipv4first
     ports:
-      - "3000:3000"
+      - "3001:3000"
     depends_on:
       - backend
     volumes:
