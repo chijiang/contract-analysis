@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Upload, FileText, Eye, Download, ChevronRight } from "lucide-react"
 import { DuplicateContractDialog } from "@/components/duplicate-contract-dialog"
 import { ContractAnalysisLoading } from "@/components/contract-analysis-loading"
@@ -30,6 +32,7 @@ type ContractRecord = {
 
 type StandardClause = {
   id: string
+  templateId: string
   category: string
   clauseItem: string
   standard: string
@@ -43,6 +46,15 @@ type StandardClausePayload = {
   item: string
   standard_text: string
   risk_level: string | null
+}
+
+type ContractTemplate = {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 type ClauseLocation = {
@@ -83,6 +95,7 @@ type StoredAnalysisRecord = {
   contractId: string
   result: unknown
   standardClauses: unknown
+  selectedTemplateIds: string[] | null
   createdAt: string
   updatedAt: string
 }
@@ -239,6 +252,14 @@ export function ContractReviewInterface() {
   const [clauses, setClauses] = useState<StandardClause[]>([])
   const [clausesStatus, setClausesStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
   const [clausesError, setClausesError] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<ContractTemplate[]>([])
+  const [templatesStatus, setTemplatesStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
+  const [templatesError, setTemplatesError] = useState<string | null>(null)
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([])
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [pendingTemplateSelection, setPendingTemplateSelection] = useState<string[]>([])
+  const [pendingAnalysisAction, setPendingAnalysisAction] = useState<"analyze" | "reprocess" | null>(null)
+  const [templateDialogError, setTemplateDialogError] = useState<string | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [analysisResult, setAnalysisResult] = useState<NonStandardDetectionResult | null>(null)
@@ -268,16 +289,31 @@ export function ContractReviewInterface() {
     return `/api/files/${encodedSegments.join("/")}`
   }, [contractRecord])
 
-  const standardClausesPayload = useMemo<StandardClausePayload[] | null>(() => {
-    if (clausesStatus !== "success") return null
-    if (!clauses.length) return []
-    return clauses.map((clause) => ({
-      category: clause.category,
-      item: clause.clauseItem,
-      standard_text: clause.standard,
-      risk_level: clause.riskLevel ?? null,
-    }))
-  }, [clauses, clausesStatus])
+  const loadTemplates = useCallback(async () => {
+    setTemplatesStatus("loading")
+    setTemplatesError(null)
+    try {
+      const response = await fetch("/api/contract-templates")
+      if (!response.ok) {
+        throw new Error(`加载模板失败，状态码 ${response.status}`)
+      }
+      const data = (await response.json()) as ContractTemplate[]
+      setTemplates(data)
+      setTemplatesStatus("success")
+      if (data.length === 0) {
+        setSelectedTemplateIds([])
+      } else {
+        setSelectedTemplateIds((prev) => {
+          const valid = prev.filter((id) => data.some((template) => template.id === id))
+          if (valid.length > 0) return valid
+          return data.map((template) => template.id)
+        })
+      }
+    } catch (error) {
+      setTemplatesStatus("error")
+      setTemplatesError(error instanceof Error ? error.message : "加载产品合同模板失败")
+    }
+  }, [])
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -317,6 +353,13 @@ export function ContractReviewInterface() {
       }
     }
   }
+
+  useEffect(() => {
+    loadTemplates().catch(() => {
+      setTemplatesStatus("error")
+      setTemplatesError("加载产品合同模板失败")
+    })
+  }, [loadTemplates])
 
   const persistContract = useCallback(
     async (file: File, markdown: string) => {
@@ -547,35 +590,6 @@ export function ContractReviewInterface() {
     }
   }, [uploadedFile, convertPdfToMarkdown])
 
-  const loadClauses = useCallback(async () => {
-    setClausesStatus("loading")
-    setClausesError(null)
-    try {
-      const response = await fetch("/api/standard-clauses")
-      if (!response.ok) {
-        throw new Error(`加载标准条款失败，状态码 ${response.status}`)
-      }
-
-      const data = (await response.json()) as StandardClause[]
-      const normalized = data.map((clause) => ({
-        ...clause,
-        riskLevel: clause.riskLevel ?? null,
-      }))
-      setClauses(normalized)
-      setClausesStatus("success")
-    } catch (error) {
-      setClausesStatus("error")
-      setClausesError(error instanceof Error ? error.message : "加载标准条款失败")
-    }
-  }, [])
-
-  useEffect(() => {
-    loadClauses().catch(() => {
-      setClausesStatus("error")
-      setClausesError("加载标准条款失败")
-    })
-  }, [loadClauses])
-
   useEffect(() => {
     if (markdownStatus !== "success" || !markdownContent) {
       setAnalysisStatus("idle")
@@ -587,88 +601,220 @@ export function ContractReviewInterface() {
     }
   }, [markdownContent, markdownStatus])
 
-  const runAnalysis = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
-    if (!contractRecord) {
-      setAnalysisStatus("error")
-      setAnalysisError("请先完成合同保存后再进行分析")
-      return
-    }
+  const runAnalysis = useCallback(
+    async ({ force = false, templateIds }: { force?: boolean; templateIds: string[] }) => {
+      if (!contractRecord) {
+        setAnalysisStatus("error")
+        setAnalysisError("请先完成合同保存后再进行分析")
+        return
+      }
 
-    const markdown = markdownContent || contractRecord.markdown
-    if (!markdown) {
-      setAnalysisStatus("error")
-      setAnalysisError("未找到合同Markdown内容，无法分析")
-      return
-    }
+      if (!templateIds.length) {
+        setAnalysisStatus("error")
+        setAnalysisError("请至少选择一个产品合同模板")
+        return
+      }
 
-    try {
-      setAnalysisStatus("loading")
-      setAnalysisError(null)
+      const markdown = markdownContent || contractRecord.markdown
+      if (!markdown) {
+        setAnalysisStatus("error")
+        setAnalysisError("未找到合同Markdown内容，无法分析")
+        return
+      }
 
-      if (!force) {
-        // 首先尝试从数据库获取已有分析结果
-        const getResponse = await fetch(`/api/contracts/${contractRecord.id}/analysis`)
-        if (getResponse.ok) {
-          const existingData = await getResponse.json()
-          if (existingData?.analysis) {
-            const normalized = normalizeDetectionResult(existingData.analysis.result)
-            setAnalysisResult(normalized)
-            setAnalysisRecord(existingData.analysis)
-            setAnalysisSource("cache")
-            setAnalysisStatus("success")
-            setSelectedAnalysisIndex(normalized.extractedClauses.length ? 0 : null)
-            return
+      try {
+        setAnalysisStatus("loading")
+        setAnalysisError(null)
+
+        if (!force) {
+          const getResponse = await fetch(`/api/contracts/${contractRecord.id}/analysis`)
+          if (getResponse.ok) {
+            const existingData = await getResponse.json()
+            if (existingData?.analysis) {
+              const storedTemplateIds = Array.isArray(existingData.analysis.selectedTemplateIds)
+                ? (existingData.analysis.selectedTemplateIds as unknown[])
+                    .filter((value): value is string => typeof value === "string" && value.length > 0)
+                : []
+
+              const requestedSorted = [...templateIds].sort()
+              const storedSorted = [...storedTemplateIds].sort()
+              const sameTemplates =
+                requestedSorted.length === storedSorted.length &&
+                requestedSorted.every((id, index) => id === storedSorted[index])
+
+              if (sameTemplates) {
+                const normalized = normalizeDetectionResult(existingData.analysis.result)
+                setSelectedTemplateIds(storedTemplateIds)
+                setAnalysisResult(normalized)
+                setAnalysisRecord(existingData.analysis)
+                setAnalysisSource("cache")
+                setAnalysisStatus("success")
+                setSelectedAnalysisIndex(normalized.extractedClauses.length ? 0 : null)
+                return
+              }
+            }
           }
         }
+
+        setClausesStatus("loading")
+        setClausesError(null)
+
+        let clausePayload: StandardClausePayload[] = []
+
+        try {
+          const query = templateIds.map((id) => `templateId=${encodeURIComponent(id)}`).join("&")
+          const response = await fetch(`/api/standard-clauses?${query}`)
+          if (!response.ok) {
+            const payload = await response.json().catch(() => null)
+            throw new Error(payload?.message ?? `加载标准条款失败，状态码 ${response.status}`)
+          }
+
+          const data = (await response.json()) as StandardClause[]
+          const normalizedClauses = data.map((clause) => ({
+            ...clause,
+            riskLevel: clause.riskLevel ?? null,
+          }))
+          setClauses(normalizedClauses)
+          clausePayload = normalizedClauses.map((clause) => ({
+            category: clause.category,
+            item: clause.clauseItem,
+            standard_text: clause.standard,
+            risk_level: clause.riskLevel ?? null,
+          }))
+          setClausesStatus("success")
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "加载标准条款失败"
+          setClausesStatus("error")
+          setClausesError(message)
+          setClauses([])
+          setAnalysisStatus("error")
+          setAnalysisError(message)
+          setAnalysisResult(null)
+          setAnalysisRecord(null)
+          setAnalysisSource(null)
+          setSelectedAnalysisIndex(null)
+          return
+        }
+
+        if (clausePayload.length === 0) {
+          const message = "所选模板下暂无标准条款，无法执行分析"
+          setClauses([])
+          setAnalysisStatus("error")
+          setAnalysisError(message)
+          setAnalysisResult(null)
+          setAnalysisRecord(null)
+          setAnalysisSource(null)
+          setSelectedAnalysisIndex(null)
+          return
+        }
+
+        setSelectedTemplateIds(templateIds)
+
+        const response = await fetch(`/api/contracts/${contractRecord.id}/analysis`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            markdown,
+            standard_clauses: clausePayload,
+            template_ids: templateIds,
+            ...(force ? { force: true } : {}),
+          }),
+        })
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null)
+          throw new Error(payload?.message ?? `分析失败，状态码 ${response.status}`)
+        }
+
+        const data = (await response.json()) as AnalyzeContractResponse
+        if (!data?.analysis) {
+          throw new Error("分析接口返回结果无效")
+        }
+
+        const normalized = normalizeDetectionResult(data.analysis.result)
+
+        setAnalysisResult(normalized)
+        setAnalysisRecord(data.analysis)
+        setAnalysisSource(data.source ?? "fresh")
+        setAnalysisStatus("success")
+        setSelectedAnalysisIndex(normalized.extractedClauses.length ? 0 : null)
+      } catch (error) {
+        setAnalysisStatus("error")
+        setAnalysisError(error instanceof Error ? error.message : "分析失败，请稍后重试")
+        setAnalysisResult(null)
+        setAnalysisRecord(null)
+        setAnalysisSource(null)
+        setSelectedAnalysisIndex(null)
+      }
+    },
+    [contractRecord, markdownContent],
+  )
+
+  const toggleTemplateSelection = useCallback((templateId: string) => {
+    setPendingTemplateSelection((prev) =>
+      prev.includes(templateId) ? prev.filter((id) => id !== templateId) : [...prev, templateId],
+    )
+  }, [])
+
+  const handleSelectAllTemplates = useCallback(() => {
+    setPendingTemplateSelection(templates.map((template) => template.id))
+  }, [templates])
+
+  const handleClearTemplates = useCallback(() => {
+    setPendingTemplateSelection([])
+  }, [])
+
+  const openTemplateSelection = useCallback(
+    (action: "analyze" | "reprocess") => {
+      if (templatesStatus !== "success") {
+        setAnalysisStatus("error")
+        setAnalysisError("模板列表尚未加载完成，请稍后重试")
+        return
+      }
+      if (templates.length === 0) {
+        setAnalysisStatus("error")
+        setAnalysisError("暂无可用的产品合同模板，请先在标准条款页面创建。")
+        return
       }
 
-      // 调用后端API进行分析，可选择强制重新处理
-      const response = await fetch(`/api/contracts/${contractRecord.id}/analysis`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          markdown,
-          standard_clauses: standardClausesPayload ?? null,
-          ...(force ? { force: true } : {}),
-        }),
-      })
+      setPendingAnalysisAction(action)
+      const preferredSelection = selectedTemplateIds.filter((id) => templates.some((template) => template.id === id))
+      const fallbackSelection = templates.map((template) => template.id)
+      setPendingTemplateSelection(preferredSelection.length > 0 ? preferredSelection : fallbackSelection)
+      setTemplateDialogError(null)
+      setTemplateDialogOpen(true)
+    },
+    [templatesStatus, templates, selectedTemplateIds],
+  )
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null)
-        throw new Error(payload?.message ?? `分析失败，状态码 ${response.status}`)
-      }
-
-      const data = (await response.json()) as AnalyzeContractResponse
-      if (!data?.analysis) {
-        throw new Error("分析接口返回结果无效")
-      }
-
-      const normalized = normalizeDetectionResult(data.analysis.result)
-
-      setAnalysisResult(normalized)
-      setAnalysisRecord(data.analysis)
-      setAnalysisSource(data.source ?? "fresh")
-      setAnalysisStatus("success")
-      setSelectedAnalysisIndex(normalized.extractedClauses.length ? 0 : null)
-    } catch (error) {
-      setAnalysisStatus("error")
-      setAnalysisError(error instanceof Error ? error.message : "分析失败，请稍后重试")
-      setAnalysisResult(null)
-      setAnalysisRecord(null)
-      setAnalysisSource(null)
-      setSelectedAnalysisIndex(null)
+  const handleTemplateDialogOpenChange = useCallback((open: boolean) => {
+    setTemplateDialogOpen(open)
+    if (!open) {
+      setTemplateDialogError(null)
+      setPendingAnalysisAction(null)
     }
-  }, [contractRecord, markdownContent, standardClausesPayload])
+  }, [])
 
-  const triggerAnalysis = useCallback(() => {
-    void runAnalysis()
-  }, [runAnalysis])
+  const handleTemplateDialogConfirm = useCallback(() => {
+    if (!pendingAnalysisAction) {
+      setTemplateDialogOpen(false)
+      return
+    }
 
-  const reprocessAnalysis = useCallback(() => {
-    void runAnalysis({ force: true })
-  }, [runAnalysis])
+    if (pendingTemplateSelection.length === 0) {
+      setTemplateDialogError("请至少选择一个产品合同模板")
+      return
+    }
+
+    const templateIds = [...pendingTemplateSelection]
+    setTemplateDialogOpen(false)
+    setTemplateDialogError(null)
+    const force = pendingAnalysisAction === "reprocess"
+    setPendingAnalysisAction(null)
+    void runAnalysis({ force, templateIds })
+  }, [pendingAnalysisAction, pendingTemplateSelection, runAnalysis])
 
   // 导航到合同文本的函数
   const navigateToText = useCallback((text: string) => {
@@ -731,9 +877,20 @@ export function ContractReviewInterface() {
     markdownStatus !== "success" ||
     !contractRecord ||
     saveStatus !== "success" ||
-    clausesStatus === "loading"
+    clausesStatus === "loading" ||
+    templatesStatus !== "success" ||
+    templates.length === 0
 
   const analysisTimestamp = analysisRecord ? formatDateTime(analysisRecord.updatedAt) : null
+
+  const selectedTemplateNames = useMemo(() => {
+    if (templatesStatus !== "success" || !templates.length || !selectedTemplateIds.length) {
+      return [] as string[]
+    }
+    return selectedTemplateIds
+      .map((id) => templates.find((template) => template.id === id)?.name)
+      .filter((name): name is string => typeof name === "string" && name.length > 0)
+  }, [selectedTemplateIds, templates, templatesStatus])
 
   // 按条款类型分组条款
   const groupedClauses = useMemo(() => {
@@ -757,9 +914,104 @@ export function ContractReviewInterface() {
     setSelectedAnalysisIndex(index >= 0 ? index : null)
   }, [analysisResult])
 
+  const templateDialogTitle = pendingAnalysisAction === "reprocess" ? "重新处理前选择模板" : "选择产品合同模板"
+  const templateDialogDescription =
+    pendingAnalysisAction === "reprocess"
+      ? "选择本次重新处理需要启用的标准条款模板。"
+      : "请选择本次分析需要启用的标准条款模板，至少勾选一个。"
+  const templateDialogConfirmDisabled = pendingTemplateSelection.length === 0
+
   return (
-    <div className="space-y-6">
-      <Card>
+    <>
+      <Dialog open={templateDialogOpen} onOpenChange={handleTemplateDialogOpenChange}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{templateDialogTitle}</DialogTitle>
+            <DialogDescription>{templateDialogDescription}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+            {templates.map((template) => {
+              const checked = pendingTemplateSelection.includes(template.id)
+              return (
+                <div
+                  key={template.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleTemplateSelection(template.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault()
+                      toggleTemplateSelection(template.id)
+                    }
+                  }}
+                  className={`w-full rounded-lg border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-primary/50 ${
+                    checked ? "border-primary bg-primary/5" : "border-border bg-background"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleTemplateSelection(template.id)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-foreground">{template.name}</p>
+                      {template.description && (
+                        <p className="text-xs text-muted-foreground">{template.description}</p>
+                      )}
+                      <p className="text-[11px] text-muted-foreground">
+                        创建于 {new Date(template.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            {templatesStatus === "success" && templates.length === 0 && (
+              <p className="text-sm text-muted-foreground">暂无可用模板，请先在标准条款管理页面创建。</p>
+            )}
+          </div>
+          {templateDialogError && <p className="text-sm text-destructive">{templateDialogError}</p>}
+          <DialogFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleSelectAllTemplates}
+                disabled={templates.length === 0}
+              >
+                全选
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleClearTemplates}
+                disabled={pendingTemplateSelection.length === 0}
+              >
+                清空
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => handleTemplateDialogOpenChange(false)}>
+                取消
+              </Button>
+              <Button type="button" onClick={handleTemplateDialogConfirm} disabled={templateDialogConfirmDisabled}>
+                确认
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="space-y-6">
+        <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
@@ -923,7 +1175,7 @@ export function ContractReviewInterface() {
                       type="button"
                       size="sm"
                       disabled={analysisButtonDisabled}
-                      onClick={triggerAnalysis}
+                      onClick={() => openTemplateSelection("analyze")}
                     >
                       {analysisStatus === "loading" ? "分析中..." : "开始智能分析"}
                     </Button>
@@ -932,11 +1184,16 @@ export function ContractReviewInterface() {
                       size="sm"
                       variant="outline"
                       disabled={analysisButtonDisabled || !analysisRecord}
-                      onClick={reprocessAnalysis}
+                      onClick={() => openTemplateSelection("reprocess")}
                     >
                       {analysisStatus === "loading" ? "处理中..." : "重新处理"}
                     </Button>
                   </div>
+                  {selectedTemplateNames.length > 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      已选择模板：{selectedTemplateNames.join("、")}
+                    </div>
+                  )}
                   {analysisRecord && (
                     <div className="flex flex-wrap items-center justify-start gap-2 text-xs text-muted-foreground sm:justify-end">
                       <Badge variant={analysisSource === "cache" ? "secondary" : "default"}>
@@ -948,6 +1205,16 @@ export function ContractReviewInterface() {
                 </div>
               </CardHeader>
               <CardContent className="flex-1">
+                {templatesStatus === "error" && templatesError && (
+                  <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    模板加载失败：{templatesError}
+                  </div>
+                )}
+                {templatesStatus === "success" && templates.length === 0 && (
+                  <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    暂无可用的产品合同模板，请先在标准条款管理页面创建后再试。
+                  </div>
+                )}
                 {clausesStatus === "error" && (
                   <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                     标准条款库加载失败，分析结果可能不完整：{clausesError ?? "请稍后重试"}
@@ -1272,5 +1539,6 @@ export function ContractReviewInterface() {
         onCreateNew={handleCreateNewContract}
       />
     </div>
+    </>
   )
 }

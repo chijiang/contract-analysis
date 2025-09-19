@@ -12,7 +12,11 @@ export async function GET(
 
   try {
     const file = await fs.readFile(absolutePath)
-    return new NextResponse(file, {
+    const arrayBuffer = file.buffer.slice(
+      file.byteOffset,
+      file.byteOffset + file.byteLength,
+    ) as ArrayBuffer
+    return new NextResponse(arrayBuffer, {
       headers: {
         "Content-Type": "application/pdf",
         "Cache-Control": "public, max-age=31536000, immutable",

@@ -22,6 +22,7 @@ const getRemoteApiUrl = () => {
 const serializeAnalysis = (analysis: ContractAnalysisModel) => {
   let parsedResult: unknown = null
   let parsedStandardClauses: unknown = null
+  let parsedTemplateIds: string[] | null = null
 
   try {
     parsedResult = JSON.parse(analysis.result)
@@ -37,11 +38,23 @@ const serializeAnalysis = (analysis: ContractAnalysisModel) => {
     }
   }
 
+  if (analysis.selectedTemplateIds) {
+    try {
+      const parsed = JSON.parse(analysis.selectedTemplateIds)
+      if (Array.isArray(parsed)) {
+        parsedTemplateIds = parsed.filter((value): value is string => typeof value === "string" && value.length > 0)
+      }
+    } catch (error) {
+      console.error(`Failed to parse stored template ids for contract ${analysis.contractId}`, error)
+    }
+  }
+
   return {
     id: analysis.id,
     contractId: analysis.contractId,
     result: parsedResult,
     standardClauses: parsedStandardClauses,
+    selectedTemplateIds: parsedTemplateIds,
     createdAt: analysis.createdAt,
     updatedAt: analysis.updatedAt,
   }
@@ -72,6 +85,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   let payload: {
     markdown?: unknown
     standard_clauses?: unknown
+    template_ids?: unknown
     force?: unknown
   }
 
@@ -84,6 +98,9 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
 
   const markdown = typeof payload.markdown === "string" ? payload.markdown : null
   const standardClauses = payload.standard_clauses ?? null
+  const templateIds = Array.isArray(payload.template_ids)
+    ? payload.template_ids.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : []
   const forceRefresh = payload.force === true
 
   if (!markdown) {
@@ -99,6 +116,13 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     const existingAnalysis = await prisma.contractAnalysis.findUnique({ where: { contractId } })
     if (existingAnalysis) {
       return NextResponse.json({ source: "cache", analysis: serializeAnalysis(existingAnalysis) })
+    }
+  }
+
+  if (templateIds.length) {
+    const templates = await prisma.contractTemplate.findMany({ where: { id: { in: templateIds } } })
+    if (templates.length !== templateIds.length) {
+      return NextResponse.json({ message: "选择的产品合同模板无效" }, { status: 400 })
     }
   }
 
@@ -133,17 +157,20 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
 
     const resultString = JSON.stringify(resultPayload)
     const standardClausesString = standardClauses == null ? null : JSON.stringify(standardClauses)
+    const templateIdsString = templateIds.length ? JSON.stringify(templateIds) : null
 
     const savedAnalysis = await prisma.contractAnalysis.upsert({
       where: { contractId },
       update: {
         result: resultString,
         standardClauses: standardClausesString,
+        selectedTemplateIds: templateIdsString,
       },
       create: {
         contractId,
         result: resultString,
         standardClauses: standardClausesString,
+        selectedTemplateIds: templateIdsString,
       },
     })
 

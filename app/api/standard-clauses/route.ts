@@ -2,22 +2,44 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
 import { defaultStandardClauses } from "@/lib/default-standard-clauses"
+import { DEFAULT_TEMPLATE_SLUG, resolveTemplateSelection } from "@/lib/standard-templates"
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const category = url.searchParams.get("category") || undefined
 
+  const selection = await resolveTemplateSelection(url.searchParams.getAll("templateId"))
+  if (!selection) {
+    return NextResponse.json({ message: "未找到对应的产品合同模板" }, { status: 404 })
+  }
+  const { templateIds, templates } = selection
+
   let clauses = await prisma.standardClause.findMany({
-    where: category ? { category } : undefined,
+    where: {
+      templateId: { in: templateIds },
+      ...(category ? { category } : {}),
+    },
     orderBy: [{ category: "asc" }, { clauseItem: "asc" }],
   })
 
-  if (clauses.length === 0) {
-    await prisma.standardClause.createMany({ data: defaultStandardClauses })
-    clauses = await prisma.standardClause.findMany({
-      where: category ? { category } : undefined,
-      orderBy: [{ category: "asc" }, { clauseItem: "asc" }],
-    })
+  if (clauses.length === 0 && templateIds.length === 1) {
+    const template = templates[0]
+    if (template?.slug === DEFAULT_TEMPLATE_SLUG) {
+      await prisma.standardClause.createMany({
+        data: defaultStandardClauses.map((clause) => ({
+          ...clause,
+          templateId: template.id,
+        })),
+      })
+
+      clauses = await prisma.standardClause.findMany({
+        where: {
+          templateId: template.id,
+          ...(category ? { category } : {}),
+        },
+        orderBy: [{ category: "asc" }, { clauseItem: "asc" }],
+      })
+    }
   }
 
   return NextResponse.json(clauses)
@@ -30,23 +52,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "请求体格式错误" }, { status: 400 })
   }
 
-  const { category, clauseItem, standard, riskLevel } = body as {
+  const { templateId, category, clauseItem, standard, riskLevel } = body as {
+    templateId?: string
     category?: string
     clauseItem?: string
     standard?: string
     riskLevel?: string | null
   }
 
-  if (!category || !clauseItem || !standard) {
-    return NextResponse.json({ message: "category、clauseItem、standard 均为必填" }, { status: 400 })
+  const normalizedTemplateId = typeof templateId === "string" ? templateId.trim() : ""
+  const normalizedCategory = typeof category === "string" ? category.trim() : ""
+  const normalizedClauseItem = typeof clauseItem === "string" ? clauseItem.trim() : ""
+  const normalizedStandard = typeof standard === "string" ? standard.trim() : ""
+
+  if (!normalizedTemplateId || !normalizedCategory || !normalizedClauseItem || !normalizedStandard) {
+    return NextResponse.json({ message: "templateId、category、clauseItem、standard 均为必填" }, { status: 400 })
+  }
+
+  const template = await prisma.contractTemplate.findUnique({ where: { id: normalizedTemplateId } })
+  if (!template) {
+    return NextResponse.json({ message: "产品合同模板不存在" }, { status: 404 })
   }
 
   try {
     const clause = await prisma.standardClause.create({
       data: {
-        category,
-        clauseItem,
-        standard,
+        templateId: normalizedTemplateId,
+        category: normalizedCategory,
+        clauseItem: normalizedClauseItem,
+        standard: normalizedStandard,
         riskLevel: typeof riskLevel === "string" && riskLevel.trim() ? riskLevel.trim() : null,
       },
     })

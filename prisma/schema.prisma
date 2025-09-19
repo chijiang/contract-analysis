@@ -27,8 +27,22 @@ model Contract {
   @@index([fileHash])
 }
 
+model ContractTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  standardClauses StandardClause[]
+
+  @@index([name])
+}
+
 model StandardClause {
   id          String   @id @default(cuid())
+  templateId  String
   category    String
   clauseItem  String
   standard    String
@@ -36,17 +50,21 @@ model StandardClause {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([category, clauseItem])
+  template ContractTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, category, clauseItem])
+  @@index([templateId])
   @@index([category])
 }
 
 model ContractAnalysis {
-  id              String   @id @default(cuid())
-  contractId      String   @unique
-  result          String
-  standardClauses String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  contractId         String   @unique
+  result             String
+  standardClauses    String?
+  selectedTemplateIds String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 }

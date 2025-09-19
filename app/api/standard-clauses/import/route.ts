@@ -6,9 +6,19 @@ import { parseStandardClausesWorkbook } from "@/lib/excel"
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
   const file = formData.get("file")
+  const templateId = formData.get("templateId")
 
   if (!(file instanceof File)) {
     return NextResponse.json({ message: "请上传Excel文件" }, { status: 400 })
+  }
+
+  if (typeof templateId !== "string" || !templateId.trim()) {
+    return NextResponse.json({ message: "缺少产品合同模板信息" }, { status: 400 })
+  }
+
+  const template = await prisma.contractTemplate.findUnique({ where: { id: templateId } })
+  if (!template) {
+    return NextResponse.json({ message: "产品合同模板不存在" }, { status: 404 })
   }
 
   try {
@@ -22,6 +32,7 @@ export async function POST(req: NextRequest) {
     const keys = rows.map((row) => ({ category: row.category, clauseItem: row.clauseItem }))
     const existing = await prisma.standardClause.findMany({
       where: {
+        templateId,
         OR: keys,
       },
     })
@@ -55,6 +66,7 @@ export async function POST(req: NextRequest) {
         } else {
           await tx.standardClause.create({
             data: {
+              templateId,
               category: row.category,
               clauseItem: row.clauseItem,
               standard: row.standard,
