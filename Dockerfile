@@ -5,6 +5,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Prisma 在 Alpine 需要这些依赖
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories
 RUN apk add --no-cache libc6-compat openssl
 
 COPY package*.json ./
@@ -25,6 +26,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Prisma 在 Alpine 需要这些依赖
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories
 RUN apk add --no-cache libc6-compat openssl
 
 # 复制运行所需文件
