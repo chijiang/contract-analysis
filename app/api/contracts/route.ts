@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { storageAdapter } from "@/lib/storage"
 import { calculateFileHash } from "@/lib/hash"
+import { extractAndPersistBasicInfo } from "./_helpers/basic-info"
 
 export async function GET() {
   const contracts = await prisma.contract.findMany({
     orderBy: { createdAt: "desc" },
+    include: { basicInfo: true },
   })
 
   return NextResponse.json(contracts)
@@ -77,7 +79,9 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    return NextResponse.json(contract, { status: 201 })
+    const basicInfo = await extractAndPersistBasicInfo(contract.id, markdown)
+
+    return NextResponse.json({ ...contract, basicInfo }, { status: 201 })
   } catch (error) {
     console.error("Failed to persist contract", error)
     return NextResponse.json({ message: "保存合同时发生错误" }, { status: 500 })

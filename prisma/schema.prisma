@@ -22,9 +22,31 @@ model Contract {
   updatedAt        DateTime         @updatedAt
 
   analysis ContractAnalysis?
+  basicInfo ContractBasicInfo?
 
   @@index([createdAt])
   @@index([fileHash])
+}
+
+model ContractBasicInfo {
+  id                    String   @id @default(cuid())
+  contractId            String   @unique
+  contractNumber        String?
+  contractName          String?
+  partyA                String?
+  partyB                String?
+  contractStartDate     String?
+  contractEndDate       String?
+  contractTotalAmount   Float?
+  contractPaymentMethod String?
+  contractCurrency      String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractName])
+  @@index([contractNumber])
 }
 
 model ContractTemplate {

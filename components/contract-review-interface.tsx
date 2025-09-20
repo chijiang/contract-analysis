@@ -15,6 +15,22 @@ import { DuplicateContractDialog } from "@/components/duplicate-contract-dialog"
 import { ContractAnalysisLoading } from "@/components/contract-analysis-loading"
 import { MarkdownViewer, MarkdownViewerRef } from "@/components/markdown-viewer"
 
+type ContractBasicInfoRecord = {
+  id: string
+  contractId: string
+  contractNumber: string | null
+  contractName: string | null
+  partyA: string | null
+  partyB: string | null
+  contractStartDate: string | null
+  contractEndDate: string | null
+  contractTotalAmount: number | null
+  contractPaymentMethod: string | null
+  contractCurrency: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 type ContractRecord = {
   id: string
   originalFileName: string
@@ -27,6 +43,7 @@ type ContractRecord = {
   convertedAt: string
   createdAt: string
   updatedAt: string
+  basicInfo: ContractBasicInfoRecord | null
 }
 
 type ContractTemplate = {
@@ -335,7 +352,12 @@ export function ContractReviewInterface() {
         ? parsed.selectedTemplateIds.filter((value): value is string => typeof value === "string" && value.length > 0)
         : []
 
-      setContractRecord(parsed.contractRecord ?? null)
+      const restoredContract = parsed.contractRecord
+      setContractRecord(
+        restoredContract
+          ? { ...restoredContract, basicInfo: restoredContract.basicInfo ?? null }
+          : null,
+      )
       const restoredMarkdown = typeof parsed.markdownContent === "string" ? parsed.markdownContent : ""
       setMarkdownContent(restoredMarkdown)
       setMarkdownStatus(parsed.markdownStatus ?? (restoredMarkdown ? "success" : "idle"))
@@ -550,7 +572,7 @@ export function ContractReviewInterface() {
         }
 
         const contract = (await response.json()) as ContractRecord
-        setContractRecord(contract)
+        setContractRecord({ ...contract, basicInfo: contract.basicInfo ?? null })
         setCachedFileName(contract.originalFileName)
         setSaveStatus("success")
       } catch (error) {
@@ -578,7 +600,7 @@ export function ContractReviewInterface() {
         const fullContract = contracts.find((c: any) => c.id === existingContract.id)
         
         if (fullContract) {
-          setContractRecord(fullContract)
+          setContractRecord({ ...fullContract, basicInfo: fullContract.basicInfo ?? null })
           setSaveStatus("success")
         }
       }
