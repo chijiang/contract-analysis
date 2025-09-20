@@ -25,6 +25,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Prisma 在 Alpine 需要这些依赖
+RUN echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ trixie main contrib non-free non-free-firmware" >> /etc/apt/sources.list && apt-get update
 RUN apk add --no-cache libc6-compat openssl
 
 # 复制运行所需文件
