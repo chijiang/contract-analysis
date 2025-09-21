@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { buildBackendUrl } from "@/lib/backend-service"
 
 export type BasicInfoApiResponse = {
   contract_number?: unknown
@@ -10,16 +11,6 @@ export type BasicInfoApiResponse = {
   contract_total_amount?: unknown
   contract_payment_method?: unknown
   contract_currency?: unknown
-}
-
-const basicInfoApiBaseUrl =
-  process.env.BASIC_INFO_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? ""
-
-const getBasicInfoApiUrl = () => {
-  if (!basicInfoApiBaseUrl) {
-    throw new Error("未配置基础信息提取服务地址")
-  }
-  return `${basicInfoApiBaseUrl.replace(/\/?$/, "")}/api/v1/basic_info_extraction`
 }
 
 const normalizeNullableString = (value: unknown) => {
@@ -62,18 +53,27 @@ export const extractAndPersistBasicInfo = async (
     return existingRecord
   }
 
-  if (!basicInfoApiBaseUrl) {
+  let basicInfoApiUrl: string
+
+  try {
+    // 如果显式配置了 BASIC_INFO_API_BASE_URL，则优先使用
+    basicInfoApiUrl = buildBackendUrl(
+      "/api/v1/basic_info_extraction",
+      process.env.BASIC_INFO_API_BASE_URL,
+    )
+  } catch (error) {
     if (requireRemote || !suppressErrors) {
       throw new Error("基础信息提取服务未配置")
     }
     console.warn(
-      "Skipped basic info extraction: missing BASIC_INFO_API_BASE_URL or NEXT_PUBLIC_API_BASE_URL",
+      "Skipped basic info extraction: missing BASIC_INFO_API_BASE_URL or INTERNAL_BACKEND_URL",
+      error instanceof Error ? error.message : error,
     )
     return existingRecord
   }
 
   try {
-    const response = await fetch(getBasicInfoApiUrl(), {
+    const response = await fetch(basicInfoApiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

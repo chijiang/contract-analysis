@@ -21,7 +21,7 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=file:./prisma/dev.db
-      - NEXT_PUBLIC_API_BASE_URL=http://contract-backend:6688
+      - INTERNAL_BACKEND_URL=http://contract-backend:6688
       - NON_STANDARD_ANALYSIS_API_BASE_URL=http://contract-backend:6688
       - FILE_STORAGE_PROVIDER=local
       - LOCAL_STORAGE_ROOT=/app/storage/uploads

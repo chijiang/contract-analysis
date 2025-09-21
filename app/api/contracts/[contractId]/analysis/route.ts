@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
+import { buildBackendUrl } from "@/lib/backend-service"
 import { defaultStandardClauses } from "@/lib/default-standard-clauses"
 import { DEFAULT_TEMPLATE_SLUG, resolveTemplateSelection } from "@/lib/standard-templates"
 import type { ContractAnalysis as ContractAnalysisModel, ContractTemplate as ContractTemplateModel } from "@prisma/client"
@@ -11,14 +12,17 @@ type RouteContext = {
   }
 }
 
-const nonStandardApiBaseUrl =
-  process.env.NON_STANDARD_ANALYSIS_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? ""
-
 const getRemoteApiUrl = () => {
-  if (!nonStandardApiBaseUrl) {
-    throw new Error("未配置后端分析服务地址")
+  try {
+    return buildBackendUrl(
+      "/api/v1/non_standard_detection",
+      process.env.NON_STANDARD_ANALYSIS_API_BASE_URL,
+    )
+  } catch (error) {
+    throw new Error(
+      "未配置后端分析服务地址（请设置 NON_STANDARD_ANALYSIS_API_BASE_URL 或 INTERNAL_BACKEND_URL）",
+    )
   }
-  return `${nonStandardApiBaseUrl.replace(/\/?$/, "")}/api/v1/non_standard_detection`
 }
 
 type StandardClausePayload = {

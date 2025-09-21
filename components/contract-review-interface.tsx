@@ -311,7 +311,6 @@ export function ContractReviewInterface() {
   const [hasLoadedFromCache, setHasLoadedFromCache] = useState(false)
   const hasRestoredFromCache = useRef(false)
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
   const encodedFileUrl = useMemo(() => {
     if (!contractRecord) return null
     const encodedSegments = contractRecord.filePath
@@ -700,12 +699,6 @@ export function ContractReviewInterface() {
 
   const convertPdfToMarkdown = useCallback(
     async (file: File) => {
-      if (!apiBaseUrl) {
-        setMarkdownStatus("error")
-        setMarkdownError("未配置后端地址，请设置 NEXT_PUBLIC_API_BASE_URL")
-        return
-      }
-
       if (file.type !== "application/pdf") {
         setMarkdownStatus("error")
         setMarkdownError("仅支持PDF文件转换为Markdown")
@@ -718,7 +711,7 @@ export function ContractReviewInterface() {
         const formData = new FormData()
         formData.append("file", file)
 
-        const response = await fetch(`${apiBaseUrl}/api/v1/pdf_to_markdown`, {
+        const response = await fetch("/api/pdf-to-markdown", {
           method: "POST",
           body: formData,
         })
@@ -744,7 +737,7 @@ export function ContractReviewInterface() {
         setShouldConvertMarkdown(false)
       }
     },
-    [apiBaseUrl, persistContract],
+    [persistContract],
   )
 
   useEffect(() => {
