@@ -59,7 +59,7 @@ export function ContractAnalysisLoading({ className }: ContractAnalysisLoadingPr
         setIsVisible(true)
       }, 300) // 淡出时间
       
-    }, 3000) // 每3秒切换一次
+    }, 4000) // 每4秒切换一次
 
     return () => clearInterval(interval)
   }, [])

@@ -8,7 +8,7 @@ class StandardClauses(BaseModel):
     category: str
     item: str
     standard_text: str
-    risk_level: str
+    risk_level: Optional[str] = Field(None, description="风险等级")
 
 # requests
 class NonStandardDetectionRequest(BaseModel):
