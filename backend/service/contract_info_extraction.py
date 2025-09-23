@@ -1,23 +1,53 @@
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import PydanticOutputParser
 
-from models import BasicInfoExtractionResult
-from prompts import BASIC_INFO_EXTRACTION_SYSTEM_PROMPT
+from models import (
+    AfterSalesSupportInfoModel,
+    BasicInfoExtractionResult, 
+    DeviceInfoExtractionResult, 
+    DigitalSolutionInfoExtractionResult, 
+    MaintenanceServiceInfoExtractionResult,
+    TrainingSupportInfoExtractionResult,
+    ContractAndComplianceInfoExtractionResult
+)
+from prompts import (
+    BASIC_INFO_EXTRACTION_SYSTEM_PROMPT, 
+    DEVICE_INFO_EXTRACTION_SYSTEM_PROMPT, 
+    MAINTENANCE_SERVICE_INFO_EXTRACTION_SYSTEM_PROMPT,
+    DIGITAL_SOLUTION_INFO_EXTRACTION_SYSTEM_PROMPT,
+    TRAINING_SUPPORT_INFO_EXTRACTION_SYSTEM_PROMPT,
+    CONTRACT_AND_COMPLIANCE_INFO_EXTRACTION_SYSTEM_PROMPT,
+    AFTER_SALES_SUPPORT_INFO_EXTRACTION_SYSTEM_PROMPT
+)
 
 from config import LLM_MODEL, API_KEY, API_BASE_URL
 
 class ContractInfoExtraction:
     def __init__(self):
         self.basic_info_result_parser = PydanticOutputParser(pydantic_object=BasicInfoExtractionResult)
-
+        self.device_info_result_parser = PydanticOutputParser(pydantic_object=DeviceInfoExtractionResult)
+        self.maintenance_service_info_result_parser = PydanticOutputParser(pydantic_object=MaintenanceServiceInfoExtractionResult)
+        self.digital_solution_info_result_parser = PydanticOutputParser(pydantic_object=DigitalSolutionInfoExtractionResult)
+        self.training_support_info_result_parser = PydanticOutputParser(pydantic_object=TrainingSupportInfoExtractionResult)
+        self.contract_and_compliance_info_result_parser = PydanticOutputParser(pydantic_object=ContractAndComplianceInfoExtractionResult)
+        self.after_sales_support_info_result_parser = PydanticOutputParser(pydantic_object=AfterSalesSupportInfoModel)
+        
         self.llm = ChatOpenAI(
             model=LLM_MODEL, 
             temperature=0,
             api_key=API_KEY,
             base_url=API_BASE_URL
         )
-        self.basic_info_prompt = BASIC_INFO_EXTRACTION_SYSTEM_PROMPT
 
+        self.basic_info_prompt = BASIC_INFO_EXTRACTION_SYSTEM_PROMPT
+        self.device_info_prompt = DEVICE_INFO_EXTRACTION_SYSTEM_PROMPT
+        self.maintenance_service_info_prompt = MAINTENANCE_SERVICE_INFO_EXTRACTION_SYSTEM_PROMPT
+        self.digital_solution_info_prompt = DIGITAL_SOLUTION_INFO_EXTRACTION_SYSTEM_PROMPT
+        self.training_support_info_prompt = TRAINING_SUPPORT_INFO_EXTRACTION_SYSTEM_PROMPT
+        self.contract_and_compliance_info_prompt = CONTRACT_AND_COMPLIANCE_INFO_EXTRACTION_SYSTEM_PROMPT
+        self.after_sales_support_info_prompt = AFTER_SALES_SUPPORT_INFO_EXTRACTION_SYSTEM_PROMPT
+
+    
     async def output_format_refine(self, text: str, format_instructions: str):
         prompt = f"""
         你是一个Json格式修复专家，你的任务是修复给定的Json格式，使其符合要求。
@@ -46,4 +76,100 @@ class ContractInfoExtraction:
             print(f"Raw text: {ouput_text}")
             ouput_text = await self.output_format_refine(ouput_text, self.basic_info_result_parser.get_format_instructions())
             parsed_result = self.basic_info_result_parser.parse(ouput_text)
+        return parsed_result
+
+    async def extract_device_info(self, contract_content: str):
+        response = await self.llm.ainvoke([
+            ("system", self.device_info_prompt),
+            ("system", f"输出格式: {self.device_info_result_parser.get_format_instructions()}"),
+            ("user", contract_content)
+        ])
+        ouput_text = response.content.strip().replace("```json", "").replace("```", "")
+        try:
+            parsed_result = self.device_info_result_parser.parse(ouput_text)
+        except Exception as e:
+            print(f"Error parsing result: {e}")
+            print(f"Raw text: {ouput_text}")
+            ouput_text = await self.output_format_refine(ouput_text, self.device_info_result_parser.get_format_instructions())
+            parsed_result = self.device_info_result_parser.parse(ouput_text)
+        return parsed_result
+
+    async def extract_maintenance_service_info(self, contract_content: str):
+        response = await self.llm.ainvoke([
+            ("system", self.maintenance_service_info_prompt),
+            ("system", f"输出格式: {self.maintenance_service_info_result_parser.get_format_instructions()}"),
+            ("user", contract_content)
+        ])
+        ouput_text = response.content.strip().replace("```json", "").replace("```", "")
+        try:
+            parsed_result = self.maintenance_service_info_result_parser.parse(ouput_text)
+        except Exception as e:
+            print(f"Error parsing result: {e}")
+            print(f"Raw text: {ouput_text}")
+            ouput_text = await self.output_format_refine(ouput_text, self.maintenance_service_info_result_parser.get_format_instructions())
+            parsed_result = self.maintenance_service_info_result_parser.parse(ouput_text)
+        return parsed_result
+
+    async def extract_digital_solution_info(self, contract_content: str):
+        response = await self.llm.ainvoke([
+            ("system", self.digital_solution_info_prompt),
+            ("system", f"输出格式: {self.digital_solution_info_result_parser.get_format_instructions()}"),
+            ("user", contract_content)
+        ])
+        ouput_text = response.content.strip().replace("```json", "").replace("```", "")
+        try:
+            parsed_result = self.digital_solution_info_result_parser.parse(ouput_text)
+        except Exception as e:
+            print(f"Error parsing result: {e}")
+            print(f"Raw text: {ouput_text}")
+            ouput_text = await self.output_format_refine(ouput_text, self.digital_solution_info_result_parser.get_format_instructions())
+            parsed_result = self.digital_solution_info_result_parser.parse(ouput_text)
+        return parsed_result
+    
+    async def extract_training_support_info(self, contract_content: str):
+        response = await self.llm.ainvoke([
+            ("system", self.training_support_info_prompt),
+            ("system", f"输出格式: {self.training_support_info_result_parser.get_format_instructions()}"),
+            ("user", contract_content)
+        ])
+        ouput_text = response.content.strip().replace("```json", "").replace("```", "")
+        try:
+            parsed_result = self.training_support_info_result_parser.parse(ouput_text)
+        except Exception as e:
+            print(f"Error parsing result: {e}")
+            print(f"Raw text: {ouput_text}")
+            ouput_text = await self.output_format_refine(ouput_text, self.training_support_info_result_parser.get_format_instructions())
+            parsed_result = self.training_support_info_result_parser.parse(ouput_text)
+        return parsed_result
+
+    async def extract_contract_and_compliance_info(self, contract_content: str):
+        response = await self.llm.ainvoke([
+            ("system", self.contract_and_compliance_info_prompt),
+            ("system", f"输出格式: {self.contract_and_compliance_info_result_parser.get_format_instructions()}"),
+            ("user", contract_content)
+        ])
+        ouput_text = response.content.strip().replace("```json", "").replace("```", "")
+        try:
+            parsed_result = self.contract_and_compliance_info_result_parser.parse(ouput_text)
+        except Exception as e:
+            print(f"Error parsing result: {e}")
+            print(f"Raw text: {ouput_text}")
+            ouput_text = await self.output_format_refine(ouput_text, self.contract_and_compliance_info_result_parser.get_format_instructions())
+            parsed_result = self.contract_and_compliance_info_result_parser.parse(ouput_text)
+        return parsed_result
+
+    async def extract_after_sales_support_info(self, contract_content: str):
+        response = await self.llm.ainvoke([
+            ("system", self.after_sales_support_info_prompt),
+            ("system", f"输出格式: {self.after_sales_support_info_result_parser.get_format_instructions()}"),
+            ("user", contract_content)
+        ])
+        ouput_text = response.content.strip().replace("```json", "").replace("```", "")
+        try:
+            parsed_result = self.after_sales_support_info_result_parser.parse(ouput_text)
+        except Exception as e:
+            print(f"Error parsing result: {e}")
+            print(f"Raw text: {ouput_text}")
+            ouput_text = await self.output_format_refine(ouput_text, self.after_sales_support_info_result_parser.get_format_instructions())
+            parsed_result = self.after_sales_support_info_result_parser.parse(ouput_text)
         return parsed_result

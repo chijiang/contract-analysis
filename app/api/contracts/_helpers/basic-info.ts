@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { buildBackendUrl } from "@/lib/backend-service"
+import { createProcessingLog } from "@/lib/processing-logs"
 
 export type BasicInfoApiResponse = {
   contract_number?: unknown
@@ -49,11 +50,24 @@ export const extractAndPersistBasicInfo = async (
   const { suppressErrors = true, requireRemote = false } = options
   const existingRecord = await prisma.contractBasicInfo.findUnique({ where: { contractId } })
 
+  const startedAt = Date.now()
+  const baseLogPayload = {
+    contractId,
+    action: "BASIC_INFO_EXTRACTION",
+    source: "AI",
+  } as const
+
   if (!markdown || !markdown.trim()) {
+    await createProcessingLog({
+      ...baseLogPayload,
+      status: "SKIPPED",
+      description: "缺少Markdown内容，跳过基础信息提取",
+      durationMs: Date.now() - startedAt,
+    })
     return existingRecord
   }
 
-  let basicInfoApiUrl: string
+  let basicInfoApiUrl: string | null = null
 
   try {
     // 如果显式配置了 BASIC_INFO_API_BASE_URL，则优先使用
@@ -62,13 +76,28 @@ export const extractAndPersistBasicInfo = async (
       process.env.BASIC_INFO_API_BASE_URL,
     )
   } catch (error) {
+    const normalizedError = error instanceof Error ? error.message : String(error)
     if (requireRemote || !suppressErrors) {
+      await createProcessingLog({
+        ...baseLogPayload,
+        status: "ERROR",
+        description: "基础信息提取服务未配置",
+        durationMs: Date.now() - startedAt,
+        metadata: { error: normalizedError },
+      })
       throw new Error("基础信息提取服务未配置")
     }
     console.warn(
       "Skipped basic info extraction: missing BASIC_INFO_API_BASE_URL or INTERNAL_BACKEND_URL",
-      error instanceof Error ? error.message : error,
+      normalizedError,
     )
+    await createProcessingLog({
+      ...baseLogPayload,
+      status: "SKIPPED",
+      description: "未配置基础信息提取服务",
+      durationMs: Date.now() - startedAt,
+      metadata: { warning: normalizedError },
+    })
     return existingRecord
   }
 
@@ -85,6 +114,7 @@ export const extractAndPersistBasicInfo = async (
       throw new Error(`基础信息提取接口调用失败，状态码 ${response.status}`)
     }
 
+    const httpStatus = response.status
     const payload = (await response.json()) as BasicInfoApiResponse
     const normalized = {
       contractNumber: normalizeNullableString(payload.contract_number),
@@ -107,9 +137,31 @@ export const extractAndPersistBasicInfo = async (
       },
     })
 
+    await createProcessingLog({
+      ...baseLogPayload,
+      status: "SUCCESS",
+      description: "基础信息提取完成",
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        apiUrl: basicInfoApiUrl,
+        httpStatus,
+        hasData: Boolean(record),
+      },
+    })
+
     return record
   } catch (error) {
     console.error("Failed to extract and persist contract basic info", error)
+    await createProcessingLog({
+      ...baseLogPayload,
+      status: "ERROR",
+      description: "基础信息提取失败",
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        apiUrl: basicInfoApiUrl,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
     if (suppressErrors) {
       return existingRecord
     }

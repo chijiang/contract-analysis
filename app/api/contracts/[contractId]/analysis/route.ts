@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { buildBackendUrl } from "@/lib/backend-service"
 import { defaultStandardClauses } from "@/lib/default-standard-clauses"
 import { DEFAULT_TEMPLATE_SLUG, resolveTemplateSelection } from "@/lib/standard-templates"
+import { createProcessingLog } from "@/lib/processing-logs"
 import type { ContractAnalysis as ContractAnalysisModel, ContractTemplate as ContractTemplateModel } from "@prisma/client"
 
 type RouteContext = {
@@ -136,6 +137,19 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ message: "未找到合同分析结果" }, { status: 404 })
   }
 
+  await createProcessingLog({
+    contractId,
+    action: "CONTRACT_ANALYSIS",
+    description: "读取缓存的合同分析结果",
+    source: "DATABASE",
+    status: "SUCCESS",
+    durationMs: 0,
+    metadata: {
+      contractAnalysisId: analysis.id,
+      source: "cache",
+    },
+  })
+
   return NextResponse.json({ source: "cache", analysis: serializeAnalysis(analysis) })
 }
 
@@ -145,6 +159,11 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   if (!contractId) {
     return NextResponse.json({ message: "缺少合同ID" }, { status: 400 })
   }
+
+  const baseLogPayload = {
+    contractId,
+    action: "CONTRACT_ANALYSIS",
+  } as const
 
   let payload: {
     markdown?: unknown
@@ -156,6 +175,15 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     payload = (await req.json()) as typeof payload
   } catch (error) {
     console.error("Failed to parse analysis request payload", error)
+    await createProcessingLog({
+      ...baseLogPayload,
+      description: "解析合同分析请求失败",
+      source: "DATABASE",
+      status: "ERROR",
+      metadata: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
     return NextResponse.json({ message: "请求格式不正确" }, { status: 400 })
   }
 
@@ -166,20 +194,45 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   const forceRefresh = payload.force === true
 
   if (!markdown) {
+    await createProcessingLog({
+      ...baseLogPayload,
+      description: "缺少合同Markdown内容",
+      source: "DATABASE",
+      status: "ERROR",
+    })
     return NextResponse.json({ message: "缺少合同Markdown内容" }, { status: 400 })
   }
 
   if (templateIds.length === 0) {
+    await createProcessingLog({
+      ...baseLogPayload,
+      description: "未选择产品合同模板",
+      source: "DATABASE",
+      status: "ERROR",
+    })
     return NextResponse.json({ message: "请至少提供一个产品合同模板" }, { status: 400 })
   }
 
   const contract = await prisma.contract.findUnique({ where: { id: contractId } })
   if (!contract) {
+    await createProcessingLog({
+      ...baseLogPayload,
+      description: "合同不存在",
+      source: "DATABASE",
+      status: "ERROR",
+    })
     return NextResponse.json({ message: "合同不存在" }, { status: 404 })
   }
 
   const selection = await resolveTemplateSelection(templateIds)
   if (!selection) {
+    await createProcessingLog({
+      ...baseLogPayload,
+      description: "选择的产品合同模板无效",
+      source: "DATABASE",
+      status: "ERROR",
+      metadata: { templateIds },
+    })
     return NextResponse.json({ message: "选择的产品合同模板无效" }, { status: 400 })
   }
 
@@ -204,6 +257,17 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
           normalizedStored.every((value, index) => value === normalizedRequested[index])
 
         if (sameTemplates) {
+          await createProcessingLog({
+            ...baseLogPayload,
+            description: "使用缓存的合同分析结果",
+            source: "DATABASE",
+            status: "SUCCESS",
+            durationMs: 0,
+            metadata: {
+              templateIds: normalizedStored,
+              contractAnalysisId: existingAnalysis.id,
+            },
+          })
           return NextResponse.json({ source: "cache", analysis: serializeAnalysis(existingAnalysis) })
         }
       } catch (error) {
@@ -227,6 +291,16 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       const message = template.description
         ? `${template.name}（${template.description}）下暂无标准条款，无法执行分析`
         : `${template.name} 模板下暂无标准条款，无法执行分析`
+      await createProcessingLog({
+        ...baseLogPayload,
+        description: message,
+        source: "DATABASE",
+        status: "ERROR",
+        metadata: {
+          templateId,
+          templateName: template.name,
+        },
+      })
       return NextResponse.json({ message }, { status: 400 })
     }
 
@@ -242,10 +316,19 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   try {
     remoteApiUrl = getRemoteApiUrl()
   } catch (error) {
-    return NextResponse.json({ message: error instanceof Error ? error.message : String(error) }, { status: 500 })
+    const message = error instanceof Error ? error.message : String(error)
+    await createProcessingLog({
+      ...baseLogPayload,
+      description: "未配置合同分析服务",
+      source: "AI",
+      status: "ERROR",
+      metadata: { error: message },
+    })
+    return NextResponse.json({ message }, { status: 500 })
   }
 
   try {
+    const remoteStartedAt = Date.now()
     const analysisEntries = await Promise.all(
       requestedTemplateIds.map(async (templateId) => {
         const clauses = clausesByTemplate[templateId]
@@ -308,9 +391,36 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       },
     })
 
+    await createProcessingLog({
+      ...baseLogPayload,
+      description: "合同分析完成",
+      source: "AI",
+      status: "SUCCESS",
+      durationMs: Date.now() - remoteStartedAt,
+      metadata: {
+        templateIds: requestedTemplateIds,
+        analysisId: savedAnalysis.id,
+        remoteStatuses: analysisEntries.map((entry) => ({
+          templateId: entry.templateId,
+          hasResult: entry.result != null,
+        })),
+      },
+    })
+
     return NextResponse.json({ source: "fresh", analysis: serializeAnalysis(savedAnalysis) })
   } catch (error) {
     console.error("Failed to perform contract analysis", error)
+
+    await createProcessingLog({
+      ...baseLogPayload,
+      description: "合同分析失败",
+      source: "AI",
+      status: "ERROR",
+      metadata: {
+        error: error instanceof Error ? error.message : String(error),
+        templateIds: requestedTemplateIds,
+      },
+    })
     
     // 处理超时错误
     if (error instanceof Error && error.name === "TimeoutError") {

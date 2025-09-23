@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { storageAdapter } from "@/lib/storage"
 import { calculateFileHash } from "@/lib/hash"
 import { extractAndPersistBasicInfo } from "./_helpers/basic-info"
+import { createProcessingLog } from "@/lib/processing-logs"
 
 export async function GET() {
   const contracts = await prisma.contract.findMany({
@@ -29,6 +30,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const startedAt = Date.now()
+    const baseMetadata = file instanceof File
+      ? {
+          fileName: originalName ?? file.name ?? "未命名合同.pdf",
+          fileSize: file.size,
+          mimeType: file.type || "application/pdf",
+        }
+      : null
     // 如果前端没有提供fileHash，则在后端计算
     const finalFileHash = fileHash || await calculateFileHash(file)
 
@@ -81,9 +90,36 @@ export async function POST(req: NextRequest) {
 
     const basicInfo = await extractAndPersistBasicInfo(contract.id, markdown)
 
+    await createProcessingLog({
+      contractId: contract.id,
+      action: "CONTRACT_UPLOAD",
+      description: existingContract ? "更新已存在的合同记录" : "创建新的合同记录",
+      source: "DATABASE",
+      status: "SUCCESS",
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        ...baseMetadata,
+        storageProvider,
+        fileHash: finalFileHash,
+        reusedContractId: existingContract?.id ?? null,
+      },
+    })
+
     return NextResponse.json({ ...contract, basicInfo }, { status: 201 })
   } catch (error) {
     console.error("Failed to persist contract", error)
+
+    await createProcessingLog({
+      contractId: null,
+      action: "CONTRACT_UPLOAD",
+      description: "保存合同失败",
+      source: "DATABASE",
+      status: "ERROR",
+      metadata: {
+        error: error instanceof Error ? error.message : String(error),
+        originalName,
+      },
+    })
     return NextResponse.json({ message: "保存合同时发生错误" }, { status: 500 })
   }
 }

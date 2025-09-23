@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { buildBackendUrl } from "@/lib/backend-service"
+import { createProcessingLog } from "@/lib/processing-logs"
 
 export async function POST(req: NextRequest) {
   let upstreamUrl: string
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "请上传 PDF 文件" }, { status: 400 })
   }
 
+  const startedAt = Date.now()
+
   try {
     const upstreamResponse = await fetch(upstreamUrl, {
       method: "POST",
@@ -36,13 +39,39 @@ export async function POST(req: NextRequest) {
     const contentType = upstreamResponse.headers.get("content-type") ?? ""
     const buffer = await upstreamResponse.arrayBuffer()
 
+    const baseLogPayload = {
+      contractId: null,
+      action: "OCR_CONVERSION",
+      description: "PDF 转 Markdown OCR 完成",
+      source: "AI",
+      durationMs: Date.now() - startedAt,
+      status: upstreamResponse.ok ? "SUCCESS" : "ERROR",
+      metadata: {
+        fileName: file.name,
+        fileSize: file.size,
+        upstreamStatus: upstreamResponse.status,
+      },
+    } as const
+
     if (contentType.includes("application/json")) {
       try {
         const decoded = new TextDecoder().decode(buffer)
         const payload = JSON.parse(decoded) as unknown
+        await createProcessingLog(baseLogPayload)
         return NextResponse.json(payload, { status: upstreamResponse.status })
       } catch (error) {
         console.warn("无法解析上游 JSON 响应，将返回原始内容", error)
+        await createProcessingLog({
+          ...baseLogPayload,
+          status: "ERROR",
+          description: "PDF 转 Markdown OCR 返回异常 JSON",
+          metadata: {
+            fileName: file.name,
+            fileSize: file.size,
+            upstreamStatus: upstreamResponse.status,
+            parseError: error instanceof Error ? error.message : String(error),
+          },
+        })
       }
     }
 
@@ -52,12 +81,27 @@ export async function POST(req: NextRequest) {
         }
       : undefined
 
+    await createProcessingLog(baseLogPayload)
     return new NextResponse(buffer, {
       status: upstreamResponse.status,
       headers,
     })
   } catch (error) {
     console.error("Failed to proxy pdf_to_markdown request", error)
+
+    await createProcessingLog({
+      contractId: null,
+      action: "OCR_CONVERSION",
+      description: "PDF 转 Markdown OCR 调用失败",
+      source: "AI",
+      status: "ERROR",
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        fileName: file.name,
+        fileSize: file.size,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
 
     if (error instanceof Error && error.name === "AbortError") {
       return NextResponse.json({ message: "PDF 转换请求已被取消" }, { status: 499 })

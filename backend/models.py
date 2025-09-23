@@ -15,7 +15,7 @@ class NonStandardDetectionRequest(BaseModel):
     content: str
     standard_clauses: Optional[List[StandardClauses]] = Field(None, description="标准条款")
 
-class BasicInfoExtractionRequest(BaseModel):
+class InfoExtractionRequest(BaseModel):
     content: str
 
 
@@ -67,8 +67,72 @@ class BasicInfoExtractionResult(BaseModel):
     contract_name: str = Field(..., description="合同名称，如果合同中没有名称，则返回空字符串")
     party_a: str = Field(..., description="甲方名称，如果合同中没有甲方，则返回空字符串")
     party_b: str = Field(..., description="乙方名称，如果合同中没有乙方，则返回空字符串")
-    contract_start_date: str = Field(..., description="合同开始日期 格式为YYYY/MM/DD")
-    contract_end_date: str = Field(..., description="合同结束日期 格式为YYYY/MM/DD")
+    contract_start_date: str = Field(..., description="合同开始日期 格式为YYYY/MM/DD，如果合同中没有开始日期，则返回空字符串")
+    contract_end_date: str = Field(..., description="合同结束日期 格式为YYYY/MM/DD，如果合同中没有结束日期，则返回空字符串")
     contract_total_amount: Optional[float] = Field(None, description="合同总金额")
     contract_payment_method: str = Field(..., description="付款方式，如果合同中没有付款方式，则返回空字符串")
     contract_currency: str = Field(..., description="币种，如果合同中没有币种，则返回空字符串", example = "CNY")
+
+
+class DeviceInfoModel(BaseModel):
+    device_name: str = Field(..., description="设备名称，如果合同中没有设备名称，则返回空字符串")
+    registration_number: str = Field(..., description="注册证号，如果合同中没有注册证号，则返回空字符串")
+    device_model: str = Field(..., description="设备型号，如果合同中没有设备型号，则返回空字符串")
+    ge_host_system_number: str = Field(..., description="GE 主机系统编号，如果合同中没有GE 主机系统编号，则返回空字符串")
+    installation_date: str = Field(..., description="装机日期，格式为YYYY/MM/DD，如果合同中没有装机日期，则返回空字符串")
+    service_start_date: str = Field(..., description="合同服务开始日期，格式为YYYY/MM/DD，如果合同中没有服务开始日期，则返回空字符串")
+    service_end_date: str = Field(..., description="合同服务结束日期，格式为YYYY/MM/DD，如果合同中没有服务结束日期，则返回空字符串")
+    maintenance_frequency: Optional[int] = Field(None, description="保养次数（每年）")
+    response_time: Optional[float] = Field(None, description="响应时间，单位：小时")
+    arrival_time: Optional[float] = Field(None, description="到场时间，单位：小时")
+
+class DeviceInfoExtractionResult(BaseModel):
+    devices: List[DeviceInfoModel] = Field(..., description="所有设备信息列表")
+
+
+class MaintenanceServiceInfoModel(BaseModel):
+    maintenance_scope: str = Field(..., description="保修范围, 例如：主机保修 / 探测器保修 / 线圈保用 / 磁体险 / 制冷系统保用")
+    included_parts: List[str] = Field(..., description="包含部件", example = ["冷头", "氦压机", "液氦灌注", "梯度线圈"])
+    spare_parts_support: str = Field(..., description="零备件支持, 例如：免费更换 / 七折优惠 / 不含")
+    deep_maintenance: bool = Field(..., description="深度保养，是否包含每年一次深度保养")
+
+class MaintenanceServiceInfoExtractionResult(BaseModel):
+    maintenance_services: List[MaintenanceServiceInfoModel] = Field(..., description="所有保养服务信息列表")
+
+class DigitalSolutionInfoModel(BaseModel):
+    software_product_name: str = Field(..., description="软件产品名称", examples = ["APM-CT", "APM-MR", "APM-IB"])
+    hardware_product_name: str = Field(..., description="硬件产品名称", examples = "装备守护_CT_初装")
+    quantity: int = Field(..., description="数量", example = 1)
+    service_period: str = Field(..., description="服务期间", example = "同主机保修时间")
+
+class DigitalSolutionInfoExtractionResult(BaseModel):
+    digital_solutions: List[DigitalSolutionInfoModel] = Field(..., description="所有数字化解决方案信息列表")
+
+
+class TrainingSupportInfoModel(BaseModel):
+    training_category: str = Field(..., description="培训类别", examples = ["临床应用现场培训", "临床应用课堂培训", "医疗设备管理培训", "医院工程师培训"])
+    applicable_devices: List[str] = Field(..., description="适用设备", example = ["CT750", "MR750", "IB750"])
+    training_times: Optional[int] = Field(None, description="培训次数", example = 6)
+    training_period: str = Field(..., description="培训周期", example = "合同期内3年")
+    training_days: Optional[int] = Field(None, description="每次培训天数", example = 2)
+    training_seats: Optional[int] = Field(None, description="培训名额", example = 5)
+    training_cost: Optional[str] = Field(None, description="培训费用相关信息", examples = ["乙方承担交通/住宿/会务", "乙方不承担费用"])
+
+class TrainingSupportInfoExtractionResult(BaseModel):
+    training_supports: List[TrainingSupportInfoModel] = Field(..., description="所有培训支持信息列表")
+
+class AfterSalesSupportInfoModel(BaseModel):
+    guarantee_running_rate: Optional[float] = Field(None, description="开机保证率，如未提及返回null", example = 93)
+    guarantee_mechanism: str = Field(..., description="保证机制", example = "超出停机时间则顺延保修期")
+    service_report_form: str = Field(..., description="服务报告形式", examples = ["现场纸质", "Email", "系统下载"])
+    remote_service: str = Field(..., description="远程服务", examples = ["InSite 远程监控", "无远程服务"])
+    hotline_support: str = Field(..., description="热线支持", example = "400-8128188" )
+    tax_free_parts_priority: bool = Field(False, description="保税库备件优先")
+
+class ContractAndComplianceInfoExtractionResult(BaseModel):
+    information_confidentiality_requirements: bool = Field(True, description="信息保密要求")
+    liability_of_breach: str = Field(..., description="违约责任，如有多条，使用markdown格式拆分子弹点", example = "培训逾期不补课，不退款")
+    parts_return_requirements: str = Field(..., description="配件退还要求", example = "新件更换后三日内归还旧件，逾期补偿30%")
+    delivery_requirements: str = Field(..., description="交付要求", example = "合同生效30天内交付硬件")
+    transportation_insurance: str = Field(..., description="运输保险", examples = ["乙方承担", "甲方承担"])
+    delivery_location: str = Field("", description="到货地点")

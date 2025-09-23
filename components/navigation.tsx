@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { FileText, Search, BookOpen, Archive, Menu, Scale } from "lucide-react"
+import { FileText, Search, BookOpen, Archive, Menu, Scale, ScrollText } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navigation = [
@@ -26,6 +26,12 @@ const navigation = [
     href: "/processed-contracts",
     icon: Archive,
     description: "查看已审核的合同",
+  },
+  {
+    name: "处理日志",
+    href: "/logs",
+    icon: ScrollText,
+    description: "追踪合同处理历史记录",
   },
 ]
 

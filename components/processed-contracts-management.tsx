@@ -97,7 +97,7 @@ const formatDateRange = (start: string | null | undefined, end: string | null | 
   }
 
   if (startLabel !== "—" && endLabel !== "—") {
-    return `${startLabel} 至 ${endLabel}`
+    return `${startLabel} ~ ${endLabel}`
   }
 
   if (startLabel !== "—") {

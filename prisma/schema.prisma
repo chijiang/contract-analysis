@@ -23,6 +23,13 @@ model Contract {
 
   analysis ContractAnalysis?
   basicInfo ContractBasicInfo?
+  processingLogs ContractProcessingLog[]
+  deviceInfos ContractDeviceInfo[]
+  maintenanceServices ContractMaintenanceServiceInfo[]
+  digitalSolutions ContractDigitalSolutionInfo[]
+  trainingSupports ContractTrainingSupportInfo[]
+  complianceInfo ContractComplianceInfo?
+  afterSalesSupport ContractAfterSalesSupportInfo?
 
   @@index([createdAt])
   @@index([fileHash])
@@ -87,6 +94,129 @@ model ContractAnalysis {
   selectedTemplateIds String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+}
+
+model ContractProcessingLog {
+  id          String   @id @default(cuid())
+  contractId  String?
+  action      String
+  description String?
+  source      String?
+  status      String? @default("SUCCESS")
+  durationMs  Int?
+  metadata    String?
+  createdAt   DateTime @default(now())
+
+  contract Contract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([contractId, createdAt])
+  @@index([action])
+  @@index([createdAt])
+}
+
+/// 设备信息（多条/合同）
+model ContractDeviceInfo {
+  id                     String   @id @default(cuid())
+  contractId             String
+  deviceName             String?
+  registrationNumber     String?
+  deviceModel            String?
+  geHostSystemNumber     String?
+  installationDate       String?
+  serviceStartDate       String?
+  serviceEndDate         String?
+  maintenanceFrequency   Int?
+  responseTime           Float?
+  arrivalTime            Float?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+}
+
+/// 保养服务信息（多条/合同）
+model ContractMaintenanceServiceInfo {
+  id                   String   @id @default(cuid())
+  contractId           String
+  maintenanceScope     String?
+  includedPartsJson    String?  /// JSON 字符串数组
+  sparePartsSupport    String?
+  deepMaintenance      Boolean?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+}
+
+/// 数字化解决方案信息（多条/合同）
+model ContractDigitalSolutionInfo {
+  id                 String   @id @default(cuid())
+  contractId         String
+  softwareProductName String?
+  hardwareProductName String?
+  quantity           Int?
+  servicePeriod      String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+}
+
+/// 培训支持信息（多条/合同）
+model ContractTrainingSupportInfo {
+  id                 String   @id @default(cuid())
+  contractId         String
+  trainingCategory   String?
+  applicableDevicesJson String? /// JSON 字符串数组
+  trainingTimes      Int?
+  trainingPeriod     String? 
+  trainingDays       Int?
+  trainingSeats      Int?
+  trainingCost       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+}
+
+/// 合同与合规信息（单条/合同）
+model ContractComplianceInfo {
+  id                               String   @id @default(cuid())
+  contractId                       String   @unique
+  informationConfidentialityRequirements Boolean?
+  liabilityOfBreach                String?
+  partsReturnRequirements          String?
+  deliveryRequirements             String?
+  transportationInsurance          String?
+  deliveryLocation                 String?
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+}
+
+/// 售后支持信息（单条/合同）
+model ContractAfterSalesSupportInfo {
+  id                      String   @id @default(cuid())
+  contractId              String   @unique
+  guaranteeRunningRate    Float?
+  guaranteeMechanism      String?
+  serviceReportForm       String?
+  remoteService           String?
+  hotlineSupport          String?
+  taxFreePartsPriority    Boolean?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 }

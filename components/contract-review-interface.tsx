@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { DuplicateContractDialog } from "@/components/duplicate-contract-dialog"
+import { ContractServiceInfoPanel } from "@/components/contract-service-info-panel"
 import { MarkdownViewerRef } from "@/components/markdown-viewer"
 import { ContractAnalysisPanel } from "@/components/contract-analysis-panel"
 import { ContractClausesList } from "@/components/contract-clauses-list"
@@ -998,6 +999,9 @@ export function ContractReviewInterface() {
                 selectedClauseTemplate={selectedClauseTemplate}
                 navigateToText={navigateToText}
               />
+            </div>
+            <div className="mt-6">
+              <ContractServiceInfoPanel contract={contractRecord} markdown={markdownContent || contractRecord?.markdown || ""} />
             </div>
           </div>
         )}
