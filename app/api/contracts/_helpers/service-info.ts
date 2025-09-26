@@ -65,6 +65,25 @@ export type AfterSalesSupportInfoModel = {
   tax_free_parts_priority?: unknown
 }
 
+export type KeySparePartsExtractionResult = {
+  tubes?: Array<{
+    device_model?: unknown
+    ge_host_system_number?: unknown
+    xr_tube_id?: unknown
+    manufacturer?: unknown
+    registration_number?: unknown
+    contract_start_date?: unknown
+    contract_end_date?: unknown
+    response_time?: unknown
+  }>
+  coils?: Array<{
+    ge_host_system_number?: unknown
+    coil_order_number?: unknown
+    coil_name?: unknown
+    coil_serial_number?: unknown
+  }>
+}
+
 const toNullableString = (v: unknown) => {
   if (typeof v !== "string") return null
   const t = v.trim()
@@ -89,6 +108,12 @@ const toNullableBoolean = (v: unknown) => {
   }
   if (typeof v === "number") return v !== 0
   return null
+}
+
+const toNullableIntFromBool = (v: unknown) => {
+  const b = toNullableBoolean(v)
+  if (b === null) return null
+  return b ? 1 : 0
 }
 
 type ExtractOptions = { suppressErrors?: boolean }
@@ -117,7 +142,7 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
     deviceApiUrl = buildBackendUrl("/api/v1/device_info_extraction")
   }
 
-  // 2) 保养服务
+  // 2) 保修服务
   let maintenanceApiUrl: string
   try {
     maintenanceApiUrl = buildBackendUrl("/api/v1/maintenance_service_info_extraction", process.env.SERVICE_INFO_API_BASE_URL)
@@ -157,27 +182,37 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
     afterSalesApiUrl = buildBackendUrl("/api/v1/after_sales_support_info_extraction")
   }
 
+  // 7) 关键备件信息
+  let keySparePartsApiUrl: string
   try {
-    const [deviceRes, maintenanceRes, digitalRes, trainingRes, complianceRes, afterSalesRes] = await Promise.all([
+    keySparePartsApiUrl = buildBackendUrl("/api/v1/key_spare_parts_info_extraction", process.env.SERVICE_INFO_API_BASE_URL)
+  } catch (e) {
+    keySparePartsApiUrl = buildBackendUrl("/api/v1/key_spare_parts_info_extraction")
+  }
+
+  try {
+    const [deviceRes, maintenanceRes, digitalRes, trainingRes, complianceRes, afterSalesRes, keySparePartsRes] = await Promise.all([
       fetch(deviceApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
       fetch(maintenanceApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
       fetch(digitalApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
       fetch(trainingApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
       fetch(complianceApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
       fetch(afterSalesApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
+      fetch(keySparePartsApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
     ])
 
-    if (!deviceRes.ok || !maintenanceRes.ok || !digitalRes.ok || !trainingRes.ok || !complianceRes.ok || !afterSalesRes.ok) {
-      throw new Error(`服务调用失败: device=${deviceRes.status}, maintenance=${maintenanceRes.status}, digital=${digitalRes.status}, training=${trainingRes.status}, compliance=${complianceRes.status}, afterSales=${afterSalesRes.status}`)
+    if (!deviceRes.ok || !maintenanceRes.ok || !digitalRes.ok || !trainingRes.ok || !complianceRes.ok || !afterSalesRes.ok || !keySparePartsRes.ok) {
+      throw new Error(`服务调用失败: device=${deviceRes.status}, maintenance=${maintenanceRes.status}, digital=${digitalRes.status}, training=${trainingRes.status}, compliance=${complianceRes.status}, afterSales=${afterSalesRes.status}, keySpareParts=${keySparePartsRes.status}`)
     }
 
-    const [devicePayload, maintenancePayload, digitalPayload, trainingPayload, compliancePayload, afterSalesPayload] = await Promise.all([
+    const [devicePayload, maintenancePayload, digitalPayload, trainingPayload, compliancePayload, afterSalesPayload, keySparePartsPayload] = await Promise.all([
       deviceRes.json() as Promise<DeviceInfoExtractionResult>,
       maintenanceRes.json() as Promise<MaintenanceServiceInfoExtractionResult>,
       digitalRes.json() as Promise<DigitalSolutionInfoExtractionResult>,
       trainingRes.json() as Promise<TrainingSupportInfoExtractionResult>,
       complianceRes.json() as Promise<ContractAndComplianceInfoExtractionResult>,
       afterSalesRes.json() as Promise<AfterSalesSupportInfoModel>,
+      keySparePartsRes.json() as Promise<KeySparePartsExtractionResult>,
     ])
 
     // 落库前先清理旧数据（幂等）
@@ -186,6 +221,8 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
       prisma.contractMaintenanceServiceInfo.deleteMany({ where: { contractId } }),
       prisma.contractDigitalSolutionInfo.deleteMany({ where: { contractId } }),
       prisma.contractTrainingSupportInfo.deleteMany({ where: { contractId } }),
+      prisma.contractKeySparePartTube.deleteMany({ where: { contractId } }),
+      prisma.contractKeySparePartCoil.deleteMany({ where: { contractId } }),
     ])
 
     // 设备
@@ -208,7 +245,7 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
       })
     }
 
-    // 保养服务
+    // 保修服务
     const maints = Array.isArray(maintenancePayload?.maintenance_services) ? maintenancePayload.maintenance_services : []
     if (maints.length) {
       await prisma.contractMaintenanceServiceInfo.createMany({
@@ -217,7 +254,7 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
           maintenanceScope: toNullableString(m.maintenance_scope),
           includedPartsJson: JSON.stringify(Array.isArray(m.included_parts) ? m.included_parts : []),
           sparePartsSupport: toNullableString(m.spare_parts_support),
-          deepMaintenance: toNullableBoolean(m.deep_maintenance) as boolean | null,
+          deepMaintenance: toNullableIntFromBool(m.deep_maintenance) as number | null,
         }))
       })
     }
@@ -258,7 +295,7 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
       await prisma.contractComplianceInfo.upsert({
         where: { contractId },
         update: {
-          informationConfidentialityRequirements: toNullableBoolean(compliancePayload.information_confidentiality_requirements) as boolean | null,
+          informationConfidentialityRequirements: toNullableIntFromBool(compliancePayload.information_confidentiality_requirements) as number | null,
           liabilityOfBreach: toNullableString(compliancePayload.liability_of_breach),
           partsReturnRequirements: toNullableString(compliancePayload.parts_return_requirements),
           deliveryRequirements: toNullableString(compliancePayload.delivery_requirements),
@@ -267,7 +304,7 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
         },
         create: {
           contractId,
-          informationConfidentialityRequirements: toNullableBoolean(compliancePayload.information_confidentiality_requirements) as boolean | null,
+          informationConfidentialityRequirements: toNullableIntFromBool(compliancePayload.information_confidentiality_requirements) as number | null,
           liabilityOfBreach: toNullableString(compliancePayload.liability_of_breach),
           partsReturnRequirements: toNullableString(compliancePayload.parts_return_requirements),
           deliveryRequirements: toNullableString(compliancePayload.delivery_requirements),
@@ -287,7 +324,7 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
           serviceReportForm: toNullableString(afterSalesPayload.service_report_form),
           remoteService: toNullableString(afterSalesPayload.remote_service),
           hotlineSupport: toNullableString(afterSalesPayload.hotline_support),
-          taxFreePartsPriority: toNullableBoolean(afterSalesPayload.tax_free_parts_priority) as boolean | null,
+          taxFreePartsPriority: toNullableIntFromBool(afterSalesPayload.tax_free_parts_priority) as number | null,
         },
         create: {
           contractId,
@@ -296,8 +333,40 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
           serviceReportForm: toNullableString(afterSalesPayload.service_report_form),
           remoteService: toNullableString(afterSalesPayload.remote_service),
           hotlineSupport: toNullableString(afterSalesPayload.hotline_support),
-          taxFreePartsPriority: toNullableBoolean(afterSalesPayload.tax_free_parts_priority) as boolean | null,
+          taxFreePartsPriority: toNullableIntFromBool(afterSalesPayload.tax_free_parts_priority) as number | null,
         },
+      })
+    }
+
+    // 关键备件：球管
+    const tubes = Array.isArray(keySparePartsPayload?.tubes) ? keySparePartsPayload.tubes : []
+    if (tubes.length) {
+      await prisma.contractKeySparePartTube.createMany({
+        data: tubes.map((t) => ({
+          contractId,
+          deviceModel: toNullableString(t.device_model),
+          geHostSystemNumber: toNullableString(t.ge_host_system_number),
+          xrTubeId: toNullableString(t.xr_tube_id),
+          manufacturer: toNullableString(t.manufacturer),
+          registrationNumber: toNullableString(t.registration_number),
+          contractStartDate: toNullableString(t.contract_start_date),
+          contractEndDate: toNullableString(t.contract_end_date),
+          responseTime: toNullableNumber(t.response_time) as number | null,
+        }))
+      })
+    }
+
+    // 关键备件：线圈
+    const coils = Array.isArray(keySparePartsPayload?.coils) ? keySparePartsPayload.coils : []
+    if (coils.length) {
+      await prisma.contractKeySparePartCoil.createMany({
+        data: coils.map((c) => ({
+          contractId,
+          geHostSystemNumber: toNullableString(c.ge_host_system_number),
+          coilOrderNumber: toNullableString(c.coil_order_number),
+          coilName: toNullableString(c.coil_name),
+          coilSerialNumber: toNullableString(c.coil_serial_number),
+        }))
       })
     }
 
@@ -314,11 +383,14 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
         trainingApiUrl,
         complianceApiUrl,
         afterSalesApiUrl,
+        keySparePartsApiUrl,
         counts: {
           devices: devices.length,
           maintenances: maints.length,
           digitals: digitals.length,
           trainings: trainings.length,
+          tubes: tubes.length,
+          coils: coils.length,
         },
       },
     })

@@ -22,7 +22,7 @@ type MaintenanceRow = {
   maintenanceScope: string | null
   includedPartsJson: string | null
   sparePartsSupport: string | null
-  deepMaintenance: boolean | null
+  deepMaintenance: number | null
 }
 
 type DigitalRow = {
@@ -50,7 +50,7 @@ type ServiceInfoPayload = {
   digitalSolutions: DigitalRow[]
   trainingSupports: TrainingRow[]
   complianceInfo?: {
-    informationConfidentialityRequirements: boolean | null
+    informationConfidentialityRequirements: number | null
     liabilityOfBreach: string | null
     partsReturnRequirements: string | null
     deliveryRequirements: string | null
@@ -63,8 +63,32 @@ type ServiceInfoPayload = {
     serviceReportForm: string | null
     remoteService: string | null
     hotlineSupport: string | null
-    taxFreePartsPriority: boolean | null
+    taxFreePartsPriority: number | null
   } | null
+  keySpareParts?: {
+    tubes: TubeRow[]
+    coils: CoilRow[]
+  } | null
+}
+
+type TubeRow = {
+  id: string
+  deviceModel: string | null
+  geHostSystemNumber: string | null
+  xrTubeId: string | null
+  manufacturer: string | null
+  registrationNumber: string | null
+  contractStartDate: string | null
+  contractEndDate: string | null
+  responseTime: number | null
+}
+
+type CoilRow = {
+  id: string
+  geHostSystemNumber: string | null
+  coilOrderNumber: string | null
+  coilName: string | null
+  coilSerialNumber: string | null
 }
 
 export function ContractServiceInfoPanel({ contract, markdown }: { contract: ContractRecord | null; markdown: string }) {
@@ -114,6 +138,7 @@ export function ContractServiceInfoPanel({ contract, markdown }: { contract: Con
         trainingSupports: payload.trainingSupports ?? [],
         complianceInfo: payload.complianceInfo ?? null,
         afterSalesSupport: payload.afterSalesSupport ?? null,
+        keySpareParts: payload.keySpareParts ?? { tubes: [], coils: [] },
       })
       setLoading("success")
     } catch (e) {
@@ -146,7 +171,7 @@ export function ContractServiceInfoPanel({ contract, markdown }: { contract: Con
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-semibold">合同服务信息拆解</h2>
-          <p className="text-muted-foreground text-sm">拆解合同服务信息，包括设备信息、保养服务信息、数字化解决方案信息、培训支持信息、合同与合规信息、售后支持信息</p>
+          <p className="text-muted-foreground text-sm">拆解合同服务信息，包括设备信息、保修服务信息、数字化解决方案信息、培训支持信息、合同与合规信息、售后支持信息</p>
         </div>
         <button
           className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
@@ -174,7 +199,9 @@ export function ContractServiceInfoPanel({ contract, markdown }: { contract: Con
                     <th>系统编号</th>
                     <th>装机日期</th>
                     <th>服务期</th>
-                    <th>保养/响应/到场</th>
+                    <th>保养次数</th>
+                    <th>响应时间 (h)</th>
+                    <th>到场时间 (h)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -186,7 +213,9 @@ export function ContractServiceInfoPanel({ contract, markdown }: { contract: Con
                       <td>{d.geHostSystemNumber ?? "-"}</td>
                       <td>{d.installationDate ?? "-"}</td>
                       <td>{[d.serviceStartDate, d.serviceEndDate].filter(Boolean).join(" ~ ") || "-"}</td>
-                      <td>{[d.maintenanceFrequency ?? "-", d.responseTime ?? "-", d.arrivalTime ?? "-"].join(" / ")}</td>
+                      <td>{d.maintenanceFrequency ?? "-"}</td>
+                      <td>{d.responseTime ?? "-"}</td>
+                      <td>{d.arrivalTime ?? "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -198,7 +227,7 @@ export function ContractServiceInfoPanel({ contract, markdown }: { contract: Con
         </section>
 
         <section className="rounded-md border p-4">
-          <h3 className="mb-2 text-lg font-medium">保养服务</h3>
+          <h3 className="mb-2 text-lg font-medium">保修服务</h3>
           {data?.maintenanceServices?.length ? (
             <ul className="space-y-2 text-sm">
               {data.maintenanceServices.map((m) => (
@@ -206,7 +235,7 @@ export function ContractServiceInfoPanel({ contract, markdown }: { contract: Con
                   <div>范围：{m.maintenanceScope ?? "-"}</div>
                   <div>包含部件：{includedParts(m.includedPartsJson).join("、") || "-"}</div>
                   <div>零备件支持：{m.sparePartsSupport ?? "-"}</div>
-                  <div>深度保养：{m.deepMaintenance === null ? "-" : m.deepMaintenance ? "是" : "否"}</div>
+                  <div>深度保养：{m.deepMaintenance === null ? "-" : (Number(m.deepMaintenance) > 0 ? "是" : "否")}</div>
                 </li>
               ))}
             </ul>
@@ -267,10 +296,77 @@ export function ContractServiceInfoPanel({ contract, markdown }: { contract: Con
         </section>
 
         <section className="rounded-md border p-4">
+          <h3 className="mb-2 text-lg font-medium">关键备件</h3>
+          {(data?.keySpareParts?.tubes?.length || 0) > 0 ? (
+            <div className="mb-4">
+              <h4 className="mb-2 font-medium">球管</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-muted-foreground">
+                    <tr>
+                      <th>设备型号</th>
+                      <th>系统编号</th>
+                      <th>球管料号</th>
+                      <th>生产企业</th>
+                      <th>注册证号</th>
+                      <th>合同期</th>
+                      <th>响应时间</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data!.keySpareParts!.tubes.map((t) => (
+                      <tr key={t.id} className="border-t">
+                        <td>{t.deviceModel ?? "-"}</td>
+                        <td>{t.geHostSystemNumber ?? "-"}</td>
+                        <td>{t.xrTubeId ?? "-"}</td>
+                        <td>{t.manufacturer ?? "-"}</td>
+                        <td>{t.registrationNumber ?? "-"}</td>
+                        <td>{[t.contractStartDate, t.contractEndDate].filter(Boolean).join(" ~ ") || "-"}</td>
+                        <td>{t.responseTime ?? "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : <div className="text-sm text-muted-foreground">无球管数据</div>}
+
+          {(data?.keySpareParts?.coils?.length || 0) > 0 ? (
+            <div>
+              <h4 className="mb-2 font-medium">线圈</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-muted-foreground">
+                    <tr>
+                      <th>系统编号</th>
+                      <th>订单号</th>
+                      <th>线圈名称</th>
+                      <th>序列号</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data!.keySpareParts!.coils.map((c) => (
+                      <tr key={c.id} className="border-t">
+                        <td>{c.geHostSystemNumber ?? "-"}</td>
+                        <td>{c.coilOrderNumber ?? "-"}</td>
+                        <td>{c.coilName ?? "-"}</td>
+                        <td>{c.coilSerialNumber ?? "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">无线圈数据</div>
+          )}
+        </section>
+
+        <section className="rounded-md border p-4">
           <h3 className="mb-2 text-lg font-medium">合同与合规信息</h3>
           {data?.complianceInfo ? (
             <ul className="space-y-2 text-sm">
-              <li>信息保密要求：{data.complianceInfo.informationConfidentialityRequirements === null ? "-" : data.complianceInfo.informationConfidentialityRequirements ? "是" : "否"}</li>
+              <li>信息保密要求：{data.complianceInfo.informationConfidentialityRequirements === null ? "-" : (Number(data.complianceInfo.informationConfidentialityRequirements) > 0 ? "是" : "否")}</li>
               <li>违约责任：{data.complianceInfo.liabilityOfBreach ?? "-"}</li>
               <li>配件退还要求：{data.complianceInfo.partsReturnRequirements ?? "-"}</li>
               <li>交付要求：{data.complianceInfo.deliveryRequirements ?? "-"}</li>
@@ -291,7 +387,7 @@ export function ContractServiceInfoPanel({ contract, markdown }: { contract: Con
               <li>服务报告形式：{data.afterSalesSupport.serviceReportForm ?? "-"}</li>
               <li>远程服务：{data.afterSalesSupport.remoteService ?? "-"}</li>
               <li>热线支持：{data.afterSalesSupport.hotlineSupport ?? "-"}</li>
-              <li>保税库备件优先：{data.afterSalesSupport.taxFreePartsPriority === null ? "-" : data.afterSalesSupport.taxFreePartsPriority ? "是" : "否"}</li>
+              <li>保税库备件优先：{data.afterSalesSupport.taxFreePartsPriority === null ? "-" : (Number(data.afterSalesSupport.taxFreePartsPriority) > 0 ? "是" : "否")}</li>
             </ul>
           ) : (
             <div className="text-sm text-muted-foreground">暂无数据</div>

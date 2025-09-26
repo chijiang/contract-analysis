@@ -11,13 +11,15 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ message: "缺少合同ID" }, { status: 400 })
   }
 
-  const [devices, maints, digitals, trainings, compliance, afterSales] = await Promise.all([
+  const [devices, maints, digitals, trainings, compliance, afterSales, tubes, coils] = await Promise.all([
     prisma.contractDeviceInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
     prisma.contractMaintenanceServiceInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
     prisma.contractDigitalSolutionInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
     prisma.contractTrainingSupportInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
     prisma.contractComplianceInfo.findUnique({ where: { contractId } }),
     prisma.contractAfterSalesSupportInfo.findUnique({ where: { contractId } }),
+    prisma.contractKeySparePartTube.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
+    prisma.contractKeySparePartCoil.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
   ])
 
   return NextResponse.json({
@@ -27,6 +29,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
     trainingSupports: trainings,
     complianceInfo: compliance,
     afterSalesSupport: afterSales,
+    keySpareParts: { tubes, coils },
   })
 }
 
@@ -66,6 +69,8 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       prisma.contractTrainingSupportInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
       prisma.contractComplianceInfo.findUnique({ where: { contractId } }),
       prisma.contractAfterSalesSupportInfo.findUnique({ where: { contractId } }),
+      prisma.contractKeySparePartTube.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
+      prisma.contractKeySparePartCoil.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
     ])
 
     return NextResponse.json({
@@ -76,6 +81,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       trainingSupports: data[3],
       complianceInfo: data[4],
       afterSalesSupport: data[5],
+      keySpareParts: { tubes: data[6], coils: data[7] },
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

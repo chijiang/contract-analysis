@@ -7,7 +7,7 @@ from prompts import NON_STANDARD_ANALYSIS_DEVELOPER_PROMPT, NON_STANDARD_ANALYSI
 
 from config import LLM_MODEL, API_KEY, API_BASE_URL
 
-class NonStandardDetection:
+class NonStandardDetectionAgent:
     def __init__(self):
         self.result_parser = PydanticOutputParser(pydantic_object=LlmAnalysisResult)
 

@@ -23,13 +23,12 @@ class InfoExtractionRequest(BaseModel):
 class Compliance(str, Enum):
     COMPLETELY_CONFORM = "符合标准"
     NOT_CONFORM = "不符合标准"
-    NOT_INVOLVED = "标准中未涉及"
+    # NOT_INVOLVED = "标准中未涉及"
 
 class RiskLevel(str, Enum):
     HIGH = "高"
     MEDIUM = "中"
     LOW = "低"
-    NONE = "无"
 
 class Risk(BaseModel):
     level: RiskLevel = Field(..., description="条款的风险等级")
@@ -97,7 +96,7 @@ class MaintenanceServiceInfoModel(BaseModel):
     deep_maintenance: bool = Field(..., description="深度保养，是否包含每年一次深度保养")
 
 class MaintenanceServiceInfoExtractionResult(BaseModel):
-    maintenance_services: List[MaintenanceServiceInfoModel] = Field(..., description="所有保养服务信息列表")
+    maintenance_services: List[MaintenanceServiceInfoModel] = Field(..., description="所有保修服务信息列表")
 
 class DigitalSolutionInfoModel(BaseModel):
     software_product_name: str = Field(..., description="软件产品名称", examples = ["APM-CT", "APM-MR", "APM-IB"])
@@ -136,3 +135,23 @@ class ContractAndComplianceInfoExtractionResult(BaseModel):
     delivery_requirements: str = Field(..., description="交付要求", example = "合同生效30天内交付硬件")
     transportation_insurance: str = Field(..., description="运输保险", examples = ["乙方承担", "甲方承担"])
     delivery_location: str = Field("", description="到货地点")
+
+class CTTubeInfoModel(BaseModel):
+    device_model: str = Field(..., description="设备型号(药监局注册名)", example = "IGS 630")
+    ge_host_system_number: str = Field(..., description="GE 主机系统编号", example = "082416100079")
+    xr_tube_id: str = Field(..., description="XR球管料号")
+    manufacturer: str = Field(..., description="生产企业", example = "GE医疗")
+    registration_number: str = Field(..., description="注册证号", example = "国械注进1")
+    contract_start_date: str = Field(..., description="合同开始日期，格式为YYYY/MM/DD", example = "2024/01/01")
+    contract_end_date: str = Field(..., description="合同结束日期，格式为YYYY/MM/DD", example = "2024/12/31")
+    response_time: Optional[float] = Field(None, description="响应时间，单位：小时")
+
+class CTCoilInfoModel(BaseModel):
+    ge_host_system_number: str = Field(..., description="GE 主机系统编号", example = "082416100079")
+    coil_order_number: str = Field(..., description="线圈订单号", example = "2373366")
+    coil_name: str = Field(..., description="线圈名称", example = "3.0T GP FLEX COIL")
+    coil_serial_number: str = Field(..., description="线圈序列号", example = "123898WH9")
+
+class KeySparePartsOutputs(BaseModel):
+    tubes: List[CTTubeInfoModel] = Field([], description="所有球管备件信息列表，如合同中未涉及，返回空列表")
+    coils: List[CTCoilInfoModel] = Field([], description="所有线圈备件信息列表，如合同中未涉及，返回空列表")

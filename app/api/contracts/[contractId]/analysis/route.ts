@@ -43,6 +43,11 @@ type StoredClausesPayload = {
   clausesByTemplate: Record<string, StandardClausePayload[]>
 }
 
+type CategoryAnalysisEntry = {
+  category: string
+  payload: unknown
+}
+
 const serializeAnalysis = (analysis: ContractAnalysisModel) => {
   let parsedResult: StoredResultPayload | null = null
   let parsedStandardClauses: StoredClausesPayload | null = null
@@ -99,6 +104,79 @@ const serializeAnalysis = (analysis: ContractAnalysisModel) => {
     selectedTemplateIds: parsedTemplateIds,
     createdAt: analysis.createdAt,
     updatedAt: analysis.updatedAt,
+  }
+}
+
+const groupClausesByCategory = (clauses: StandardClausePayload[]) => {
+  const groups = new Map<string, StandardClausePayload[]>()
+
+  for (const clause of clauses) {
+    const key = clause.category && clause.category.trim().length > 0 ? clause.category : "未分类"
+    const existing = groups.get(key)
+    if (existing) {
+      existing.push(clause)
+    } else {
+      groups.set(key, [clause])
+    }
+  }
+
+  return groups
+}
+
+const extractClausesFromPayload = (payload: unknown): unknown[] => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return []
+  }
+
+  const payloadRecord = payload as Record<string, unknown>
+  const nested = payloadRecord["result"]
+
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    const extracted = (nested as Record<string, unknown>)["extracted_clauses"]
+    if (Array.isArray(extracted)) {
+      return extracted
+    }
+  }
+
+  const direct = payloadRecord["extracted_clauses"]
+  if (Array.isArray(direct)) {
+    return direct
+  }
+
+  return []
+}
+
+const mergeCategoryResults = (entries: CategoryAnalysisEntry[]): unknown => {
+  const aggregatedClauses = entries.flatMap((entry) => extractClausesFromPayload(entry.payload))
+
+  const firstObjectEntry = entries.find(
+    (entry) => entry.payload && typeof entry.payload === "object" && !Array.isArray(entry.payload),
+  )
+
+  if (firstObjectEntry) {
+    const firstRecord = firstObjectEntry.payload as Record<string, unknown>
+    const nested = firstRecord["result"]
+
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      return {
+        ...firstRecord,
+        result: {
+          ...(nested as Record<string, unknown>),
+          extracted_clauses: aggregatedClauses,
+        },
+      }
+    }
+
+    return {
+      ...firstRecord,
+      extracted_clauses: aggregatedClauses,
+    }
+  }
+
+  return {
+    result: {
+      extracted_clauses: aggregatedClauses,
+    },
   }
 }
 
@@ -333,30 +411,48 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       requestedTemplateIds.map(async (templateId) => {
         const clauses = clausesByTemplate[templateId]
         if (!clauses || clauses.length === 0) {
-          return { templateId, result: null }
+          return { templateId, result: null, categories: [] as string[] }
         }
 
-        const response = await fetch(remoteApiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            content: markdown,
-            standard_clauses: clauses,
+        const groupedClauses = groupClausesByCategory(clauses)
+        const categoryEntries = Array.from(groupedClauses.entries())
+
+        const categoryResults = await Promise.all(
+          categoryEntries.map(async ([categoryName, categoryClauses]) => {
+            const response = await fetch(remoteApiUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                content: markdown,
+                standard_clauses: categoryClauses,
+              }),
+              cache: "no-store",
+              signal: AbortSignal.timeout(300000), // 5分钟超时
+            })
+
+            if (!response.ok) {
+              const message = `分析服务调用失败（模板 ${templateId}，类别 ${categoryName}），状态码 ${response.status}`
+              console.error(message)
+              throw new Error(message)
+            }
+
+            const resultPayload = await response.json()
+            return {
+              category: categoryName,
+              payload: resultPayload as unknown,
+            }
           }),
-          cache: "no-store",
-          signal: AbortSignal.timeout(300000), // 5分钟超时
-        })
+        )
 
-        if (!response.ok) {
-          const message = `分析服务调用失败，状态码 ${response.status}`
-          console.error(message)
-          throw new Error(message)
+        const mergedResult = mergeCategoryResults(categoryResults)
+
+        return {
+          templateId,
+          result: mergedResult,
+          categories: categoryResults.map((entry) => entry.category),
         }
-
-        const resultPayload = await response.json()
-        return { templateId, result: resultPayload as unknown }
       }),
     )
 
@@ -403,6 +499,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
         remoteStatuses: analysisEntries.map((entry) => ({
           templateId: entry.templateId,
           hasResult: entry.result != null,
+          categories: entry.categories,
         })),
       },
     })

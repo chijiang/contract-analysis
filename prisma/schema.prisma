@@ -30,6 +30,8 @@ model Contract {
   trainingSupports ContractTrainingSupportInfo[]
   complianceInfo ContractComplianceInfo?
   afterSalesSupport ContractAfterSalesSupportInfo?
+  keySparePartTubes ContractKeySparePartTube[]
+  keySparePartCoils ContractKeySparePartCoil[]
 
   @@index([createdAt])
   @@index([fileHash])
@@ -138,14 +140,14 @@ model ContractDeviceInfo {
   @@index([contractId])
 }
 
-/// 保养服务信息（多条/合同）
+/// 保修服务信息（多条/合同）
 model ContractMaintenanceServiceInfo {
   id                   String   @id @default(cuid())
   contractId           String
   maintenanceScope     String?
   includedPartsJson    String?  /// JSON 字符串数组
   sparePartsSupport    String?
-  deepMaintenance      Boolean?
+  deepMaintenance      Int?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -193,7 +195,7 @@ model ContractTrainingSupportInfo {
 model ContractComplianceInfo {
   id                               String   @id @default(cuid())
   contractId                       String   @unique
-  informationConfidentialityRequirements Boolean?
+  informationConfidentialityRequirements Int?
   liabilityOfBreach                String?
   partsReturnRequirements          String?
   deliveryRequirements             String?
@@ -214,9 +216,45 @@ model ContractAfterSalesSupportInfo {
   serviceReportForm       String?
   remoteService           String?
   hotlineSupport          String?
-  taxFreePartsPriority    Boolean?
+  taxFreePartsPriority    Int?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+}
+
+/// 关键备件-球管（多条/合同）
+model ContractKeySparePartTube {
+  id                   String   @id @default(cuid())
+  contractId           String
+  deviceModel          String?
+  geHostSystemNumber   String?
+  xrTubeId             String?
+  manufacturer         String?
+  registrationNumber   String?
+  contractStartDate    String?
+  contractEndDate      String?
+  responseTime         Float?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+}
+
+/// 关键备件-线圈（多条/合同）
+model ContractKeySparePartCoil {
+  id                   String   @id @default(cuid())
+  contractId           String
+  geHostSystemNumber   String?
+  coilOrderNumber      String?
+  coilName             String?
+  coilSerialNumber     String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
 }

@@ -744,7 +744,8 @@ export function StandardTermsManagement() {
             </div>
             <div className="grid gap-2">
               <Label>风险等级说明（可选）</Label>
-              <Input
+              <Textarea
+                rows={2}
                 placeholder="例如：高、中、低或其他描述"
                 value={editFormState.riskLevel}
                 onChange={(event) =>

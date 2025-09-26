@@ -8,7 +8,8 @@ from models import (
     DigitalSolutionInfoExtractionResult, 
     MaintenanceServiceInfoExtractionResult,
     TrainingSupportInfoExtractionResult,
-    ContractAndComplianceInfoExtractionResult
+    ContractAndComplianceInfoExtractionResult,
+    KeySparePartsOutputs
 )
 from prompts import (
     BASIC_INFO_EXTRACTION_SYSTEM_PROMPT, 
@@ -17,12 +18,13 @@ from prompts import (
     DIGITAL_SOLUTION_INFO_EXTRACTION_SYSTEM_PROMPT,
     TRAINING_SUPPORT_INFO_EXTRACTION_SYSTEM_PROMPT,
     CONTRACT_AND_COMPLIANCE_INFO_EXTRACTION_SYSTEM_PROMPT,
-    AFTER_SALES_SUPPORT_INFO_EXTRACTION_SYSTEM_PROMPT
+    AFTER_SALES_SUPPORT_INFO_EXTRACTION_SYSTEM_PROMPT,
+    KEY_SPARE_PARTS_INFO_EXTRACTION_SYSTEM_PROMPT
 )
 
 from config import LLM_MODEL, API_KEY, API_BASE_URL
 
-class ContractInfoExtraction:
+class ContractInfoExtractionAgent:
     def __init__(self):
         self.basic_info_result_parser = PydanticOutputParser(pydantic_object=BasicInfoExtractionResult)
         self.device_info_result_parser = PydanticOutputParser(pydantic_object=DeviceInfoExtractionResult)
@@ -31,7 +33,8 @@ class ContractInfoExtraction:
         self.training_support_info_result_parser = PydanticOutputParser(pydantic_object=TrainingSupportInfoExtractionResult)
         self.contract_and_compliance_info_result_parser = PydanticOutputParser(pydantic_object=ContractAndComplianceInfoExtractionResult)
         self.after_sales_support_info_result_parser = PydanticOutputParser(pydantic_object=AfterSalesSupportInfoModel)
-        
+        self.key_spare_parts_info_result_parser = PydanticOutputParser(pydantic_object=KeySparePartsOutputs)
+
         self.llm = ChatOpenAI(
             model=LLM_MODEL, 
             temperature=0,
@@ -46,6 +49,7 @@ class ContractInfoExtraction:
         self.training_support_info_prompt = TRAINING_SUPPORT_INFO_EXTRACTION_SYSTEM_PROMPT
         self.contract_and_compliance_info_prompt = CONTRACT_AND_COMPLIANCE_INFO_EXTRACTION_SYSTEM_PROMPT
         self.after_sales_support_info_prompt = AFTER_SALES_SUPPORT_INFO_EXTRACTION_SYSTEM_PROMPT
+        self.key_spare_parts_info_prompt = KEY_SPARE_PARTS_INFO_EXTRACTION_SYSTEM_PROMPT
 
     
     async def output_format_refine(self, text: str, format_instructions: str):
@@ -172,4 +176,20 @@ class ContractInfoExtraction:
             print(f"Raw text: {ouput_text}")
             ouput_text = await self.output_format_refine(ouput_text, self.after_sales_support_info_result_parser.get_format_instructions())
             parsed_result = self.after_sales_support_info_result_parser.parse(ouput_text)
+        return parsed_result
+
+    async def extract_key_spare_parts_info(self, contract_content: str):
+        response = await self.llm.ainvoke([
+            ("system", self.key_spare_parts_info_prompt),
+            ("system", f"输出格式: {self.key_spare_parts_info_result_parser.get_format_instructions()}"),
+            ("user", contract_content)
+        ])
+        ouput_text = response.content.strip().replace("```json", "").replace("```", "")
+        try:
+            parsed_result = self.key_spare_parts_info_result_parser.parse(ouput_text)
+        except Exception as e:
+            print(f"Error parsing result: {e}")
+            print(f"Raw text: {ouput_text}")
+            ouput_text = await self.output_format_refine(ouput_text, self.key_spare_parts_info_result_parser.get_format_instructions())
+            parsed_result = self.key_spare_parts_info_result_parser.parse(ouput_text)
         return parsed_result

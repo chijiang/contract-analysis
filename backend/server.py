@@ -1,9 +1,20 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from models import BasicInfoExtractionResult, ContractAndComplianceInfoExtractionResult, DeviceInfoExtractionResult, DigitalSolutionInfoExtractionResult, MaintenanceServiceInfoExtractionResult, NonStandardDetectionRequest, InfoExtractionRequest, TrainingSupportInfoExtractionResult, AfterSalesSupportInfoModel
+from models import (
+    BasicInfoExtractionResult, 
+    ContractAndComplianceInfoExtractionResult, 
+    DeviceInfoExtractionResult, 
+    DigitalSolutionInfoExtractionResult,
+    KeySparePartsOutputs, 
+    MaintenanceServiceInfoExtractionResult,
+    NonStandardDetectionRequest, 
+    InfoExtractionRequest, 
+    TrainingSupportInfoExtractionResult,
+    AfterSalesSupportInfoModel
+)
 from service.pdf_converter import OcrPdfParser
-from service.non_statndard_detection import NonStandardDetection
-from service.contract_info_extraction import ContractInfoExtraction
+from service.non_statndard_detection import NonStandardDetectionAgent
+from service.contract_info_extraction import ContractInfoExtractionAgent
 from config import PORT
 import uuid
 import os
@@ -11,7 +22,6 @@ import os
 app = FastAPI()
 
 from fastapi import Request
-import json
 
 # 添加请求日志中间件
 @app.middleware("http")
@@ -44,9 +54,8 @@ app.add_middleware(
 )
 
 ocr_parser = OcrPdfParser()
-non_standard_detector = NonStandardDetection()
-contract_info_extractor = ContractInfoExtraction()
-
+non_standard_detector = NonStandardDetectionAgent()
+contract_info_extractor = ContractInfoExtractionAgent()
 
 @app.post("/api/v1/pdf_to_markdown")
 async def pdf_to_markdown(file: UploadFile = File(...)):
@@ -73,11 +82,13 @@ async def basic_info_extraction(req: InfoExtractionRequest):
     result = await contract_info_extractor.extract_basic_info(markdown)
     return result
 
+
 @app.post("/api/v1/device_info_extraction", response_model=DeviceInfoExtractionResult)
 async def device_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_device_info(markdown)
     return result
+
 
 @app.post("/api/v1/maintenance_service_info_extraction", response_model=MaintenanceServiceInfoExtractionResult)
 async def maintenance_service_info_extraction(req: InfoExtractionRequest):
@@ -85,11 +96,13 @@ async def maintenance_service_info_extraction(req: InfoExtractionRequest):
     result = await contract_info_extractor.extract_maintenance_service_info(markdown)
     return result
 
+
 @app.post("/api/v1/digital_solution_info_extraction", response_model=DigitalSolutionInfoExtractionResult)
 async def digital_solution_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_digital_solution_info(markdown)
     return result
+
 
 @app.post("/api/v1/training_support_info_extraction", response_model=TrainingSupportInfoExtractionResult)
 async def training_support_info_extraction(req: InfoExtractionRequest):
@@ -97,17 +110,27 @@ async def training_support_info_extraction(req: InfoExtractionRequest):
     result = await contract_info_extractor.extract_training_support_info(markdown)
     return result
 
+
 @app.post("/api/v1/contract_and_compliance_info_extraction", response_model=ContractAndComplianceInfoExtractionResult)
 async def contract_and_compliance_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_contract_and_compliance_info(markdown)
     return result
 
+
 @app.post("/api/v1/after_sales_support_info_extraction", response_model=AfterSalesSupportInfoModel)
 async def after_sales_support_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_after_sales_support_info(markdown)
     return result
+
+
+@app.post("/api/v1/key_spare_parts_info_extraction", response_model=KeySparePartsOutputs)
+async def key_spare_parts_info_extraction(req: InfoExtractionRequest):
+    markdown = req.content
+    result = await contract_info_extractor.extract_key_spare_parts_info(markdown)
+    return result
+
 
 if __name__ == "__main__":
     import uvicorn

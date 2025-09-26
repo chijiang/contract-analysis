@@ -67,7 +67,7 @@ class OcrPdfParser:
 
         results = await asyncio.gather(*tasks)
         results.sort(key=lambda x: x[0])
-        markdown_content = "\n---\n".join([result[1] for result in results])
+        markdown_content = "\n".join([result[1] for result in results])
         pdf_document.close()
         return markdown_content
 
