@@ -14,7 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
-  Upload, Download, Filter, RefreshCw, FileSpreadsheet, ChevronRight, Pencil, PlusCircle, Layers, Trash2
+  FileUp, Filter, RefreshCw, FileSpreadsheet, ChevronRight, Pencil, PlusCircle, Layers, Trash2,
+  FileDown
 } from "lucide-react"
 
 interface StandardClause {
@@ -946,7 +947,7 @@ export function StandardTermsManagement() {
                 onClick={() => importInputRef.current?.click()}
                 disabled={importStatus === "uploading" || !selectedTemplateId}
               >
-                <Upload className="mr-2 h-4 w-4" /> 导入Excel
+                <FileUp className="mr-2 h-4 w-4" /> 导入Excel
               </Button>
 
               <Button
@@ -961,7 +962,7 @@ export function StandardTermsManagement() {
                   exportStatus === "downloading"
                 }
               >
-                <Download className="mr-2 h-4 w-4" />
+                <FileDown className="mr-2 h-4 w-4" />
                 {exportStatus === "downloading" ? "导出中..." : "导出Excel"}
               </Button>
               <Button type="button" variant="ghost" size="sm" onClick={handleRefresh} disabled={!selectedTemplateId}>

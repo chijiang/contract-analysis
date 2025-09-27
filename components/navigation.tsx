@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { FileText, Search, BookOpen, Archive, Menu, Scale, ScrollText } from "lucide-react"
+import { FileText, Search, BookOpen, Archive, Menu, Scale, ScrollText, Layers } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navigation = [
@@ -20,6 +20,12 @@ const navigation = [
     href: "/standard-terms",
     icon: BookOpen,
     description: "管理标准条款库",
+  },
+  {
+    name: "服务计划管理",
+    href: "/service-plans",
+    icon: Layers,
+    description: "维护服务组合与条款配置",
   },
   {
     name: "已处理合同",
