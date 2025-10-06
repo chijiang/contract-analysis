@@ -85,7 +85,7 @@ export function ContractClausesList(
         <Card className="flex flex-col min-h-[700px]">
             <CardHeader className="space-y-1">
                 {/* 第一行：标题 */}
-                <CardTitle>合同分析结果</CardTitle>
+                <CardTitle>合同审核结果</CardTitle>
                 <CardDescription>针对当前合同内容的条款比对与风险识别</CardDescription>
 
                 {/* 第三行：按钮 */}

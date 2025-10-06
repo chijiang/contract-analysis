@@ -1,10 +1,8 @@
 from typing import List
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import PydanticOutputParser
-
-from models import LlmAnalysisResult, StandardClauses
+from models.compliance import LlmAnalysisResult, StandardClauses
 from prompts import NON_STANDARD_ANALYSIS_DEVELOPER_PROMPT, NON_STANDARD_ANALYSIS_SYSTEM_PROMPT
-
 from config import LLM_MODEL, API_KEY, API_BASE_URL
 
 class NonStandardDetectionAgent:

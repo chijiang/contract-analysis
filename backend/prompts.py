@@ -156,6 +156,14 @@ KEY_SPARE_PARTS_INFO_EXTRACTION_SYSTEM_PROMPT = r"""
 - 输出严格使用JSON,不要添加任何其他内容和解释。
 """
 
+GENERAL_SERVICE_INFO_EXTRACTION_SYSTEM_PROMPT = r"""
+你是通用电气医疗系统的一名合同条信息提取助理。你的目标：
+- 读取用户上传的合同正文
+- 根据输出要求，结构化提取所有服务信息
+- 请注意不要重复提取同一条或相同的服务信息
+- 输出严格使用JSON,不要添加任何其他内容和解释。
+"""
+
 #####
 DEPRECATED_PROMPTS = r"""
 无法确定时，设confidence较低并给出notes。

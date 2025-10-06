@@ -1,16 +1,18 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from models import (
+from models.compliance import (
+    NonStandardDetectionRequest, 
+)
+from models.service_plan import (
+    RemoteMaintenanceLLMOutput, 
+    ResponseArrivalLLMOutput, 
+    YearlyMaintenanceLLMOutput,
+    DetectorEcgWarrantyLLMOutput,
+    TrainingLLMOutput,
     BasicInfoExtractionResult, 
     ContractAndComplianceInfoExtractionResult, 
-    DeviceInfoExtractionResult, 
-    DigitalSolutionInfoExtractionResult,
-    KeySparePartsOutputs, 
-    MaintenanceServiceInfoExtractionResult,
-    NonStandardDetectionRequest, 
+    AfterSalesSupportInfoModel,
     InfoExtractionRequest, 
-    TrainingSupportInfoExtractionResult,
-    AfterSalesSupportInfoModel
 )
 from service.pdf_converter import OcrPdfParser
 from service.non_statndard_detection import NonStandardDetectionAgent
@@ -57,7 +59,7 @@ ocr_parser = OcrPdfParser()
 non_standard_detector = NonStandardDetectionAgent()
 contract_info_extractor = ContractInfoExtractionAgent()
 
-@app.post("/api/v1/pdf_to_markdown")
+@app.post("/api/v1/pdf_to_markdown", tags=["File Reading"])
 async def pdf_to_markdown(file: UploadFile = File(...)):
     if file.content_type != "application/pdf":
         return {"error": "File type must be application/pdf"}
@@ -69,68 +71,80 @@ async def pdf_to_markdown(file: UploadFile = File(...)):
     return {"markdown": markdown}
 
 
-@app.post("/api/v1/non_standard_detection")
+@app.post("/api/v1/non_standard_detection", tags=["Compliance"])
 async def non_standard_detection(NonStandardDetectionRequest: NonStandardDetectionRequest):
     markdown = NonStandardDetectionRequest.content
     result = await non_standard_detector.process(markdown, NonStandardDetectionRequest.standard_clauses)
     return {"result": result}
 
 
-@app.post("/api/v1/basic_info_extraction", response_model=BasicInfoExtractionResult)
+# @app.post("/api/v1/device_info_extraction", response_model=DeviceInfoExtractionResult)
+# async def device_info_extraction(req: InfoExtractionRequest):
+#     markdown = req.content
+#     result = await contract_info_extractor.extract_device_info(markdown)
+#     return result
+
+
+# @app.post("/api/v1/maintenance_service_info_extraction", response_model=MaintenanceServiceInfoExtractionResult)
+# async def maintenance_service_info_extraction(req: InfoExtractionRequest):
+#     markdown = req.content
+#     result = await contract_info_extractor.extract_maintenance_service_info(markdown)
+#     return result
+
+
+# @app.post("/api/v1/digital_solution_info_extraction", response_model=DigitalSolutionInfoExtractionResult)
+# async def digital_solution_info_extraction(req: InfoExtractionRequest):
+#     markdown = req.content
+#     result = await contract_info_extractor.extract_digital_solution_info(markdown)
+#     return result
+
+@app.post("/api/v1/basic_info_extraction", response_model=BasicInfoExtractionResult, tags=["Info Extraction"])
 async def basic_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_basic_info(markdown)
     return result
-
-
-@app.post("/api/v1/device_info_extraction", response_model=DeviceInfoExtractionResult)
-async def device_info_extraction(req: InfoExtractionRequest):
-    markdown = req.content
-    result = await contract_info_extractor.extract_device_info(markdown)
-    return result
-
-
-@app.post("/api/v1/maintenance_service_info_extraction", response_model=MaintenanceServiceInfoExtractionResult)
-async def maintenance_service_info_extraction(req: InfoExtractionRequest):
-    markdown = req.content
-    result = await contract_info_extractor.extract_maintenance_service_info(markdown)
-    return result
-
-
-@app.post("/api/v1/digital_solution_info_extraction", response_model=DigitalSolutionInfoExtractionResult)
-async def digital_solution_info_extraction(req: InfoExtractionRequest):
-    markdown = req.content
-    result = await contract_info_extractor.extract_digital_solution_info(markdown)
-    return result
-
-
-@app.post("/api/v1/training_support_info_extraction", response_model=TrainingSupportInfoExtractionResult)
+    
+@app.post("/api/v1/training_support_info_extraction", response_model=TrainingLLMOutput, tags=["Info Extraction"])
 async def training_support_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_training_support_info(markdown)
     return result
 
-
-@app.post("/api/v1/contract_and_compliance_info_extraction", response_model=ContractAndComplianceInfoExtractionResult)
+@app.post("/api/v1/contract_and_compliance_info_extraction", response_model=ContractAndComplianceInfoExtractionResult, tags=["Info Extraction"])
 async def contract_and_compliance_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_contract_and_compliance_info(markdown)
     return result
 
-
-@app.post("/api/v1/after_sales_support_info_extraction", response_model=AfterSalesSupportInfoModel)
+@app.post("/api/v1/after_sales_support_info_extraction", response_model=AfterSalesSupportInfoModel, tags=["Info Extraction"])
 async def after_sales_support_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_after_sales_support_info(markdown)
     return result
 
-
-@app.post("/api/v1/key_spare_parts_info_extraction", response_model=KeySparePartsOutputs)
+@app.post("/api/v1/key_spare_parts_info_extraction", response_model=DetectorEcgWarrantyLLMOutput, tags=["Info Extraction"])
 async def key_spare_parts_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_key_spare_parts_info(markdown)
     return result
 
+@app.post("/api/v1/onsite_SLA_extraction", response_model=ResponseArrivalLLMOutput, tags=["Info Extraction"])
+async def response_arrival_info_extraction(req: InfoExtractionRequest):
+    markdown = req.content
+    result = await contract_info_extractor.extract_response_arrival_info(markdown)
+    return result
+
+@app.post("/api/v1/yearly_maintenance_info_extraction", response_model=YearlyMaintenanceLLMOutput, tags=["Info Extraction"])
+async def yearly_maintenance_info_extraction(req: InfoExtractionRequest):
+    markdown = req.content
+    result = await contract_info_extractor.extract_yearly_maintenance_info(markdown)
+    return result
+
+@app.post("/api/v1/remote_maintenance_info_extraction", response_model=RemoteMaintenanceLLMOutput, tags=["Info Extraction"])
+async def remote_maintenance_info_extraction(req: InfoExtractionRequest):
+    markdown = req.content
+    result = await contract_info_extractor.extract_remote_maintenance_info(markdown)
+    return result
 
 if __name__ == "__main__":
     import uvicorn

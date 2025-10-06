@@ -212,13 +212,13 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 
   const analysis = await prisma.contractAnalysis.findUnique({ where: { contractId } })
   if (!analysis) {
-    return NextResponse.json({ message: "未找到合同分析结果" }, { status: 404 })
+    return NextResponse.json({ message: "未找到合同审核结果" }, { status: 404 })
   }
 
   await createProcessingLog({
     contractId,
-    action: "CONTRACT_ANALYSIS",
-    description: "读取缓存的合同分析结果",
+    action: "CONTRACT_COMPLIANCE",
+    description: "读取缓存的合同审核结果",
     source: "DATABASE",
     status: "SUCCESS",
     durationMs: 0,
@@ -240,7 +240,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
 
   const baseLogPayload = {
     contractId,
-    action: "CONTRACT_ANALYSIS",
+    action: "CONTRACT_COMPLIANCE",
   } as const
 
   let payload: {
@@ -337,7 +337,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
         if (sameTemplates) {
           await createProcessingLog({
             ...baseLogPayload,
-            description: "使用缓存的合同分析结果",
+            description: "使用缓存的合同审核结果",
             source: "DATABASE",
             status: "SUCCESS",
             durationMs: 0,

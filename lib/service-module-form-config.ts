@@ -1,6 +1,6 @@
 import type { ServiceModuleType } from "@/lib/service-plans"
 
-type FieldType = "text" | "textarea" | "number" | "checkbox"
+type FieldType = "text" | "textarea" | "number" | "checkbox" | "multiselect"
 
 export type ServiceModuleFieldDefinition = {
   key: string
@@ -9,6 +9,7 @@ export type ServiceModuleFieldDefinition = {
   placeholder?: string
   description?: string
   unit?: string
+  options?: string[] // 用于多选下拉框的选项列表
 }
 
 export type ServiceModuleFormConfig = {
@@ -16,47 +17,36 @@ export type ServiceModuleFormConfig = {
   fields: ServiceModuleFieldDefinition[]
 }
 
-type ModuleFormValues = Record<string, string | boolean>
+type ModuleFormValues = Record<string, string | boolean | string[]>
 
 export const SERVICE_MODULE_FORM_CONFIG: Record<ServiceModuleType, ServiceModuleFormConfig> = {
   responseArrival: {
     summary: "响应时间、到场时效与支持渠道配置",
     fields: [
       {
-        key: "responseTimeWorkingHours",
-        label: "工作日响应时间 (小时)",
+        key: "responseTimeHours",
+        label: "响应时间 (小时)",
         type: "number",
         placeholder: "如 4",
       },
       {
-        key: "responseTimeOffHours",
-        label: "非工作日响应时间 (小时)",
-        type: "number",
-        placeholder: "如 6",
-      },
-      {
-        key: "arrivalTimeWorkingHours",
-        label: "工作日到场时间 (小时)",
-        type: "number",
-        placeholder: "如 8",
-      },
-      {
-        key: "arrivalTimeOffHours",
-        label: "非工作日到场时间 (小时)",
+        key: "onSiteTimeHours",
+        label: "到场时间 (小时)",
         type: "number",
         placeholder: "如 12",
       },
       {
-        key: "supportChannels",
-        label: "支持与联系渠道",
-        type: "textarea",
-        placeholder: "热线、远程、现场等，建议每行一个",
+        key: "coverage",
+        label: "服务覆盖时段",
+        type: "text",
+        placeholder: "如 24x7",
       },
       {
-        key: "escalationProcess",
-        label: "升级流程说明",
-        type: "textarea",
-        placeholder: "如城市团队 → 区域专家 → 总部专家",
+        key: "supportChannels",
+        label: "支持与联系渠道",
+        type: "multiselect",
+        placeholder: "选择支持渠道",
+        options: ["热线电话", "远程支持", "现场服务"],
       },
     ],
   },
@@ -64,16 +54,29 @@ export const SERVICE_MODULE_FORM_CONFIG: Record<ServiceModuleType, ServiceModule
     summary: "年度保养频次与范围",
     fields: [
       {
-        key: "pmFrequencyPerYear",
-        label: "年度保养频次 (次/年)",
+        key: "standardPmPerYear",
+        label: "标准保养频次 (次/年)",
+        type: "number",
+        placeholder: "如 3",
+      },
+      {
+        key: "smartPmPerYear",
+        label: "精智保养频次 (次/年)",
+        type: "number",
+        placeholder: "如 1",
+      },
+      {
+        key: "remotePmPerYear",
+        label: "远程保养频次 (次/年)",
         type: "number",
         placeholder: "如 2",
       },
       {
         key: "pmScope",
         label: "保养覆盖范围",
-        type: "textarea",
-        placeholder: "请描述保养包含的作业、部件、耗材等",
+        type: "multiselect",
+        placeholder: "选择保养覆盖范围",
+        options: ["设备清洁", "性能测试", "校准", "机械检查", "电气检查", "深度保养", "非紧急性质的预防性维护"],
       },
       {
         key: "pmDeliverables",
@@ -85,7 +88,7 @@ export const SERVICE_MODULE_FORM_CONFIG: Record<ServiceModuleType, ServiceModule
         key: "pmScheduling",
         label: "排期与提前期",
         type: "textarea",
-        placeholder: "如提前 7 日沟通，年度固定窗口等",
+        placeholder: "如提前7日沟通，年度固定窗口等",
       },
     ],
   },
@@ -99,22 +102,65 @@ export const SERVICE_MODULE_FORM_CONFIG: Record<ServiceModuleType, ServiceModule
         placeholder: "如 InSite, OnWatch 等",
       },
       {
-        key: "monitoringFrequency",
-        label: "监测频次/覆盖",
-        type: "textarea",
-        placeholder: "如 7x24 远程监测，异常即刻通知等",
+        key: "ctRemotePmPerYear",
+        label: "每年 CT 远程维护次数",
+        type: "number",
+        placeholder: "如 1",
       },
       {
-        key: "remotePm",
-        label: "远程 PM 内容",
-        type: "textarea",
-        placeholder: "如季度远程健康检查、远程校准",
+        key: "mrRemotePmPerYear",
+        label: "每年 MR 远程维护次数",
+        type: "number",
+        placeholder: "如 1",
       },
       {
-        key: "reporting",
-        label: "报告与沟通机制",
-        type: "textarea",
-        placeholder: "如月度巡检报告、线上会议复盘",
+        key: "drRemotePmPerYear",
+        label: "每年 DR 远程维护次数",
+        type: "number",
+        placeholder: "如 1",
+      },
+      {
+        key: "mammoRemotePmPerYear",
+        label: "每年 Mammo 远程维护次数",
+        type: "number",
+        placeholder: "如 1",
+      },
+      {
+        key: "mobileDrRemotePmPerYear",
+        label: "每年 MobileDR 远程维护次数",
+        type: "number",
+        placeholder: "如 1",
+      },
+      {
+        key: "boneDensityRemotePmPerYear",
+        label: "每年 BoneDensity 远程维护次数",
+        type: "number",
+        placeholder: "如 1",
+      },
+      {
+        key: "usRemotePmPerYear",
+        label: "每年 US 远程维护次数",
+        type: "number",
+        placeholder: "如 1",
+      },
+      {
+        key: "otherRemotePmPerYear",
+        label: "每年 Other 远程维护次数",
+        type: "number",
+        placeholder: "如 1",
+      },
+      {
+        key: "prerequisitesMaxUsersPerDevice",
+        label: "每台设备的最大用户账号数",
+        type: "number",
+        placeholder: "如 4",
+      },
+      {
+        key: "reports",
+        label: "报告类型",
+        type: "multiselect",
+        placeholder: "选择报告类型",
+        options: ["IPM", "usage", "alarms", "maintenance-log"],
       },
     ],
   },
@@ -231,6 +277,8 @@ export function createDefaultModuleFormValues(type: ServiceModuleType): ModuleFo
   for (const field of config.fields) {
     if (field.type === "checkbox") {
       values[field.key] = false
+    } else if (field.type === "multiselect") {
+      values[field.key] = []
     } else {
       values[field.key] = ""
     }
@@ -254,6 +302,14 @@ export function modulePayloadToFormValues(
       result[field.key] = Boolean(raw)
       continue
     }
+    if (field.type === "multiselect") {
+      if (Array.isArray(raw)) {
+        result[field.key] = raw.map(item => String(item))
+      } else {
+        result[field.key] = []
+      }
+      continue
+    }
     if (raw === undefined || raw === null) {
       result[field.key] = ""
     } else {
@@ -275,6 +331,14 @@ export function formValuesToModulePayload(
     const raw = values[field.key]
     if (field.type === "checkbox") {
       payload[field.key] = Boolean(raw)
+      continue
+    }
+    if (field.type === "multiselect") {
+      if (Array.isArray(raw)) {
+        payload[field.key] = raw.filter(item => item && typeof item === "string" && item.trim())
+      } else {
+        payload[field.key] = []
+      }
       continue
     }
     const text = typeof raw === "string" ? raw.trim() : ""

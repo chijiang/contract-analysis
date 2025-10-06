@@ -5,11 +5,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useToast } from "@/components/ui/use-toast"
@@ -33,7 +36,7 @@ import {
 import { Download, Loader2, Pencil, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
 
 const MODULE_TITLES: Record<ServiceModuleType, string> = {
-  responseArrival: "响应与到场",
+  responseArrival: "现场维修服务SLA",
   yearlyMaintenance: "年度保养",
   remoteMaintenance: "远程维护",
   detectorEcg: "探测器/ECG 保修",
@@ -749,6 +752,9 @@ export function ServicePlansManagement() {
         <DialogContent className="max-h-[90vh] w-full max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{planFormMode === "create" ? "新建服务计划" : "编辑服务计划"}</DialogTitle>
+            <DialogDescription>
+              {planFormMode === "create" ? "创建一个新的服务计划，包含多个服务模块" : "编辑现有服务计划的配置信息"}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -1036,6 +1042,9 @@ export function ServicePlansManagement() {
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{templateFormMode === "create" ? "新建服务模块" : "编辑服务模块"}</DialogTitle>
+            <DialogDescription>
+              {templateFormMode === "create" ? "创建一个新的服务模块模板，可在服务计划中复用" : "编辑现有服务模块的配置参数"}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -1149,6 +1158,79 @@ export function ServicePlansManagement() {
                                 placeholder={field.placeholder}
                                 rows={3}
                               />
+                              {field.description ? (
+                                <p className="text-xs text-muted-foreground">{field.description}</p>
+                              ) : null}
+                            </div>
+                          )
+                        }
+
+                        if (field.type === "multiselect") {
+                          if (!field.options) {
+                            return null
+                          }
+                          const selectedValues = Array.isArray(rawValue) ? rawValue : []
+                          return (
+                            <div key={field.key} className="space-y-1">
+                              <Label className="text-sm font-medium">{field.label}</Label>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button
+                                    type="button"
+                                    role="combobox"
+                                    className="flex w-full items-center justify-between h-auto min-h-[36px] px-3 py-2 text-sm border border-input bg-transparent rounded-md shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <div className="flex flex-wrap gap-1">
+                                      {selectedValues.length === 0 ? (
+                                        <span className="text-muted-foreground">{field.placeholder}</span>
+                                      ) : (
+                                        selectedValues.map((value) => (
+                                          <Badge key={value} variant="secondary" className="text-xs">
+                                            {value}
+                                          </Badge>
+                                        ))
+                                      )}
+                                    </div>
+                                    <div className="ml-2 h-4 w-4 shrink-0 opacity-50">
+                                      ▼
+                                    </div>
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[200px] p-0" align="start">
+                                  <Command>
+                                    <CommandInput placeholder={`搜索${field.label}...`} />
+                                    <CommandEmpty>未找到选项</CommandEmpty>
+                                    <CommandGroup>
+                                      {field.options.map((option) => {
+                                        const isSelected = selectedValues.includes(option)
+                                        return (
+                                          <CommandItem
+                                            key={option}
+                                            onSelect={() => {
+                                              const newValues = isSelected
+                                                ? selectedValues.filter((v) => v !== option)
+                                                : [...selectedValues, option]
+                                              setTemplateFormState((prev) => ({
+                                                ...prev,
+                                                payloadFormValues: {
+                                                  ...prev.payloadFormValues,
+                                                  [field.key]: newValues,
+                                                },
+                                              }))
+                                            }}
+                                          >
+                                            <Checkbox
+                                              checked={isSelected}
+                                              className="mr-2"
+                                            />
+                                            {option}
+                                          </CommandItem>
+                                        )
+                                      })}
+                                    </CommandGroup>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
                               {field.description ? (
                                 <p className="text-xs text-muted-foreground">{field.description}</p>
                               ) : null}

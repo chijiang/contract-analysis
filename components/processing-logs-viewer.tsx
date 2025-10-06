@@ -16,7 +16,7 @@ const ACTION_OPTIONS = [
   { value: "CONTRACT_UPLOAD", label: "合同上传" },
   { value: "OCR_CONVERSION", label: "OCR 转换" },
   { value: "BASIC_INFO_EXTRACTION", label: "基础信息提取" },
-  { value: "CONTRACT_ANALYSIS", label: "合同分析" },
+  { value: "CONTRACT_COMPLIANCE", label: "合同分析" },
 ]
 
 const SOURCE_OPTIONS = [

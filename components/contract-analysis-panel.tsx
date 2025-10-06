@@ -54,7 +54,7 @@ export function ContractAnalysisPanel(
   return (
     <Card className="flex flex-col min-h-[700px]">
       <CardHeader className="space-y-1">
-        <CardTitle>合同分析详情</CardTitle>
+        <CardTitle>审核结果详情</CardTitle>
         <CardDescription>查看条款差异、风险等级与整改建议</CardDescription>
       </CardHeader>
       <CardContent className="flex-1">
