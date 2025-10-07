@@ -32,6 +32,7 @@ model Contract {
   afterSalesSupport ContractAfterSalesSupportInfo?
   keySparePartTubes ContractKeySparePartTube[]
   keySparePartCoils ContractKeySparePartCoil[]
+  serviceInfoSnapshot ContractServiceInfoSnapshot?
 
   @@index([createdAt])
   @@index([fileHash])
@@ -221,6 +222,19 @@ model ContractAfterSalesSupportInfo {
   updatedAt               DateTime @updatedAt
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+}
+
+/// 合同服务信息快照（JSON 存储）
+model ContractServiceInfoSnapshot {
+  id         String   @id @default(cuid())
+  contractId String   @unique
+  payload    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
 }
 
 /// 关键备件-球管（多条/合同）

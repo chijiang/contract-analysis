@@ -1,412 +1,346 @@
 import { prisma } from "@/lib/prisma"
 import { buildBackendUrl } from "@/lib/backend-service"
 import { createProcessingLog } from "@/lib/processing-logs"
+import {
+  type AfterSalesSupportItem,
+  type ContractComplianceItem,
+  type DeviceInfo,
+  type KeySparePartItem,
+  type OnsiteSlaItem,
+  type RemoteMaintenanceItem,
+  type ServiceInfoSnapshotPayload,
+  type TrainingSupportItem,
+  type YearlyMaintenanceItem,
+  createEmptyServiceInfoSnapshot,
+} from "@/app/types/service-info"
 
-export type DeviceInfoExtractionResult = {
-  devices?: Array<{
-    device_name?: unknown
-    registration_number?: unknown
-    device_model?: unknown
-    ge_host_system_number?: unknown
-    installation_date?: unknown
-    service_start_date?: unknown
-    service_end_date?: unknown
-    maintenance_frequency?: unknown
-    response_time?: unknown
-    arrival_time?: unknown
-  }>
+const toNullableString = (value: unknown) => {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length ? trimmed : null
 }
 
-export type MaintenanceServiceInfoExtractionResult = {
-  maintenance_services?: Array<{
-    maintenance_scope?: unknown
-    included_parts?: unknown
-    spare_parts_support?: unknown
-    deep_maintenance?: unknown
-  }>
-}
-
-export type DigitalSolutionInfoExtractionResult = {
-  digital_solutions?: Array<{
-    software_product_name?: unknown
-    hardware_product_name?: unknown
-    quantity?: unknown
-    service_period?: unknown
-  }>
-}
-
-export type TrainingSupportInfoExtractionResult = {
-  training_supports?: Array<{
-    training_category?: unknown
-    applicable_devices?: unknown
-    training_times?: unknown
-    training_period?: unknown
-    training_days?: unknown
-    training_seats?: unknown
-    training_cost?: unknown
-  }>
-}
-
-export type ContractAndComplianceInfoExtractionResult = {
-  information_confidentiality_requirements?: unknown
-  liability_of_breach?: unknown
-  parts_return_requirements?: unknown
-  delivery_requirements?: unknown
-  transportation_insurance?: unknown
-  delivery_location?: unknown
-}
-
-export type AfterSalesSupportInfoModel = {
-  guarantee_running_rate?: unknown
-  guarantee_mechanism?: unknown
-  service_report_form?: unknown
-  remote_service?: unknown
-  hotline_support?: unknown
-  tax_free_parts_priority?: unknown
-}
-
-export type KeySparePartsExtractionResult = {
-  tubes?: Array<{
-    device_model?: unknown
-    ge_host_system_number?: unknown
-    xr_tube_id?: unknown
-    manufacturer?: unknown
-    registration_number?: unknown
-    contract_start_date?: unknown
-    contract_end_date?: unknown
-    response_time?: unknown
-  }>
-  coils?: Array<{
-    ge_host_system_number?: unknown
-    coil_order_number?: unknown
-    coil_name?: unknown
-    coil_serial_number?: unknown
-  }>
-}
-
-const toNullableString = (v: unknown) => {
-  if (typeof v !== "string") return null
-  const t = v.trim()
-  return t.length ? t : null
-}
-
-const toNullableNumber = (v: unknown) => {
-  if (typeof v === "number" && Number.isFinite(v)) return v
-  if (typeof v === "string") {
-    const n = Number(v.replace(/,/g, "").trim())
-    return Number.isFinite(n) ? n : null
+const toNullableNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(/,/g, "").trim()
+    if (!normalized) return null
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : null
   }
   return null
 }
 
-const toNullableBoolean = (v: unknown) => {
-  if (typeof v === "boolean") return v
-  if (typeof v === "string") {
-    const t = v.trim().toLowerCase()
-    if (["true", "yes", "y", "1"].includes(t)) return true
-    if (["false", "no", "n", "0"].includes(t)) return false
+const toNullableBoolean = (value: unknown) => {
+  if (typeof value === "boolean") return value
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) return null
+    if (!Number.isFinite(value)) return null
+    return value !== 0
   }
-  if (typeof v === "number") return v !== 0
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase()
+    if (["true", "yes", "y", "1"].includes(normalized)) return true
+    if (["false", "no", "n", "0"].includes(normalized)) return false
+  }
   return null
 }
 
-const toNullableIntFromBool = (v: unknown) => {
-  const b = toNullableBoolean(v)
-  if (b === null) return null
-  return b ? 1 : 0
+const toStringArray = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as string[]
+  return value.map((entry) => toNullableString(entry)).filter((entry): entry is string => Boolean(entry))
+}
+
+const buildServiceInfoUrl = (path: string) => {
+  try {
+    return buildBackendUrl(path, process.env.SERVICE_INFO_API_BASE_URL)
+  } catch (error) {
+    return buildBackendUrl(path)
+  }
+}
+
+const requestPayload = async <T>(path: string, markdown: string) => {
+  const url = buildServiceInfoUrl(path)
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: markdown }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`服务调用失败(${path})，状态码 ${response.status}`)
+  }
+
+  const payload = (await response.json()) as T
+  return { url, payload }
+}
+
+export const parseServiceInfoSnapshotPayload = (payload: string | null | undefined) => {
+  if (!payload) {
+    return createEmptyServiceInfoSnapshot()
+  }
+  try {
+    const parsed = JSON.parse(payload) as ServiceInfoSnapshotPayload
+    return {
+      ...createEmptyServiceInfoSnapshot(),
+      ...parsed,
+      onsiteSla: Array.isArray(parsed?.onsiteSla) ? parsed.onsiteSla : [],
+      yearlyMaintenance: Array.isArray(parsed?.yearlyMaintenance) ? parsed.yearlyMaintenance : [],
+      remoteMaintenance: Array.isArray(parsed?.remoteMaintenance) ? parsed.remoteMaintenance : [],
+      trainingSupports: Array.isArray(parsed?.trainingSupports) ? parsed.trainingSupports : [],
+      keySpareParts: Array.isArray(parsed?.keySpareParts) ? parsed.keySpareParts : [],
+      contractCompliance: parsed?.contractCompliance ?? null,
+      afterSalesSupport: parsed?.afterSalesSupport ?? null,
+    }
+  } catch (error) {
+    console.warn("Failed to parse service info snapshot", error)
+    return createEmptyServiceInfoSnapshot()
+  }
 }
 
 type ExtractOptions = { suppressErrors?: boolean }
 
+const extractDeviceList = (value: unknown): DeviceInfo[] => {
+  if (!Array.isArray(value)) return []
+  return value.map((device) => {
+    if (!device || typeof device !== "object") {
+      return {
+        deviceName: null,
+        registrationNumber: null,
+        deviceModel: null,
+        geHostSystemNumber: null,
+        installationDate: null,
+        serviceStartDate: null,
+        serviceEndDate: null,
+      }
+    }
+
+    const record = device as Record<string, unknown>
+    return {
+      deviceName: toNullableString(record.device_name),
+      registrationNumber: toNullableString(record.registration_number),
+      deviceModel: toNullableString(record.device_model),
+      geHostSystemNumber: toNullableString(record.ge_host_system_number),
+      installationDate: toNullableString(record.installation_date),
+      serviceStartDate: toNullableString(record.service_start_date),
+      serviceEndDate: toNullableString(record.service_end_date),
+    }
+  })
+}
+
 export async function extractAndPersistServiceInfo(contractId: string, markdown: string, options: ExtractOptions = {}) {
   const { suppressErrors = true } = options
+  const existingSnapshot = await prisma.contractServiceInfoSnapshot.findUnique({ where: { contractId } })
+  const baseLog = { contractId, source: "AI" as const, action: "SERVICE_INFO_EXTRACTION" as const }
   const startedAt = Date.now()
-  const baseLog = { contractId, source: "AI" as const }
 
   if (!markdown || !markdown.trim()) {
     await createProcessingLog({
       ...baseLog,
-      action: "SERVICE_INFO_EXTRACTION",
-      description: "缺少Markdown内容，跳过服务信息提取",
       status: "SKIPPED",
+      description: "缺少Markdown内容，跳过服务信息提取",
       durationMs: Date.now() - startedAt,
     })
-    return
-  }
-
-  // 1) 设备信息
-  let deviceApiUrl: string
-  try {
-    deviceApiUrl = buildBackendUrl("/api/v1/device_info_extraction", process.env.SERVICE_INFO_API_BASE_URL)
-  } catch (e) {
-    deviceApiUrl = buildBackendUrl("/api/v1/device_info_extraction")
-  }
-
-  // 2) 保修服务
-  let maintenanceApiUrl: string
-  try {
-    maintenanceApiUrl = buildBackendUrl("/api/v1/maintenance_service_info_extraction", process.env.SERVICE_INFO_API_BASE_URL)
-  } catch (e) {
-    maintenanceApiUrl = buildBackendUrl("/api/v1/maintenance_service_info_extraction")
-  }
-
-  // 3) 数字化解决方案
-  let digitalApiUrl: string
-  try {
-    digitalApiUrl = buildBackendUrl("/api/v1/digital_solution_info_extraction", process.env.SERVICE_INFO_API_BASE_URL)
-  } catch (e) {
-    digitalApiUrl = buildBackendUrl("/api/v1/digital_solution_info_extraction")
-  }
-
-  // 4) 培训支持
-  let trainingApiUrl: string
-  try {
-    trainingApiUrl = buildBackendUrl("/api/v1/training_support_info_extraction", process.env.SERVICE_INFO_API_BASE_URL)
-  } catch (e) {
-    trainingApiUrl = buildBackendUrl("/api/v1/training_support_info_extraction")
-  }
-
-  // 5) 合同与合规信息
-  let complianceApiUrl: string
-  try {
-    complianceApiUrl = buildBackendUrl("/api/v1/contract_and_compliance_info_extraction", process.env.SERVICE_INFO_API_BASE_URL)
-  } catch (e) {
-    complianceApiUrl = buildBackendUrl("/api/v1/contract_and_compliance_info_extraction")
-  }
-
-  // 6) 售后支持信息
-  let afterSalesApiUrl: string
-  try {
-    afterSalesApiUrl = buildBackendUrl("/api/v1/after_sales_support_info_extraction", process.env.SERVICE_INFO_API_BASE_URL)
-  } catch (e) {
-    afterSalesApiUrl = buildBackendUrl("/api/v1/after_sales_support_info_extraction")
-  }
-
-  // 7) 关键备件信息
-  let keySparePartsApiUrl: string
-  try {
-    keySparePartsApiUrl = buildBackendUrl("/api/v1/key_spare_parts_info_extraction", process.env.SERVICE_INFO_API_BASE_URL)
-  } catch (e) {
-    keySparePartsApiUrl = buildBackendUrl("/api/v1/key_spare_parts_info_extraction")
+    return existingSnapshot
+      ? parseServiceInfoSnapshotPayload(existingSnapshot.payload)
+      : createEmptyServiceInfoSnapshot()
   }
 
   try {
-    const [deviceRes, maintenanceRes, digitalRes, trainingRes, complianceRes, afterSalesRes, keySparePartsRes] = await Promise.all([
-      fetch(deviceApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
-      fetch(maintenanceApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
-      fetch(digitalApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
-      fetch(trainingApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
-      fetch(complianceApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
-      fetch(afterSalesApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
-      fetch(keySparePartsApiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: markdown }) }),
+    const [onsiteRes, yearlyRes, remoteRes, trainingRes, complianceRes, afterSalesRes, keySparePartsRes] = await Promise.all([
+      requestPayload<any>("/api/v1/onsite_SLA_extraction", markdown),
+      requestPayload<any>("/api/v1/yearly_maintenance_info_extraction", markdown),
+      requestPayload<any>("/api/v1/remote_maintenance_info_extraction", markdown),
+      requestPayload<any>("/api/v1/training_support_info_extraction", markdown),
+      requestPayload<any>("/api/v1/contract_and_compliance_info_extraction", markdown),
+      requestPayload<any>("/api/v1/after_sales_support_info_extraction", markdown),
+      requestPayload<any>("/api/v1/key_spare_parts_info_extraction", markdown),
     ])
 
-    if (!deviceRes.ok || !maintenanceRes.ok || !digitalRes.ok || !trainingRes.ok || !complianceRes.ok || !afterSalesRes.ok || !keySparePartsRes.ok) {
-      throw new Error(`服务调用失败: device=${deviceRes.status}, maintenance=${maintenanceRes.status}, digital=${digitalRes.status}, training=${trainingRes.status}, compliance=${complianceRes.status}, afterSales=${afterSalesRes.status}, keySpareParts=${keySparePartsRes.status}`)
-    }
-
-    const [devicePayload, maintenancePayload, digitalPayload, trainingPayload, compliancePayload, afterSalesPayload, keySparePartsPayload] = await Promise.all([
-      deviceRes.json() as Promise<DeviceInfoExtractionResult>,
-      maintenanceRes.json() as Promise<MaintenanceServiceInfoExtractionResult>,
-      digitalRes.json() as Promise<DigitalSolutionInfoExtractionResult>,
-      trainingRes.json() as Promise<TrainingSupportInfoExtractionResult>,
-      complianceRes.json() as Promise<ContractAndComplianceInfoExtractionResult>,
-      afterSalesRes.json() as Promise<AfterSalesSupportInfoModel>,
-      keySparePartsRes.json() as Promise<KeySparePartsExtractionResult>,
-    ])
-
-    // 落库前先清理旧数据（幂等）
-    await prisma.$transaction([
-      prisma.contractDeviceInfo.deleteMany({ where: { contractId } }),
-      prisma.contractMaintenanceServiceInfo.deleteMany({ where: { contractId } }),
-      prisma.contractDigitalSolutionInfo.deleteMany({ where: { contractId } }),
-      prisma.contractTrainingSupportInfo.deleteMany({ where: { contractId } }),
-      prisma.contractKeySparePartTube.deleteMany({ where: { contractId } }),
-      prisma.contractKeySparePartCoil.deleteMany({ where: { contractId } }),
-    ])
-
-    // 设备
-    const devices = Array.isArray(devicePayload?.devices) ? devicePayload.devices : []
-    if (devices.length) {
-      await prisma.contractDeviceInfo.createMany({
-        data: devices.map((d) => ({
-          contractId,
-          deviceName: toNullableString(d.device_name),
-          registrationNumber: toNullableString(d.registration_number),
-          deviceModel: toNullableString(d.device_model),
-          geHostSystemNumber: toNullableString(d.ge_host_system_number),
-          installationDate: toNullableString(d.installation_date),
-          serviceStartDate: toNullableString(d.service_start_date),
-          serviceEndDate: toNullableString(d.service_end_date),
-          maintenanceFrequency: toNullableNumber(d.maintenance_frequency) as number | null,
-          responseTime: toNullableNumber(d.response_time) as number | null,
-          arrivalTime: toNullableNumber(d.arrival_time) as number | null,
+    const onsiteSla: OnsiteSlaItem[] = Array.isArray(onsiteRes.payload?.item_list)
+      ? onsiteRes.payload.item_list.map((item: Record<string, unknown>) => ({
+          serviceType: toNullableString(item.service_type),
+          responseTimeHours: toNullableNumber(item.response_time_hours),
+          onSiteTimeHours: toNullableNumber(item.on_site_time_hours),
+          coverage: toNullableString(item.coverage),
+          originalContractSnippet: toNullableString(item.original_contract_snippet),
+          devices: extractDeviceList(item.devices_info),
         }))
-      })
-    }
+      : []
 
-    // 保修服务
-    const maints = Array.isArray(maintenancePayload?.maintenance_services) ? maintenancePayload.maintenance_services : []
-    if (maints.length) {
-      await prisma.contractMaintenanceServiceInfo.createMany({
-        data: maints.map((m) => ({
-          contractId,
-          maintenanceScope: toNullableString(m.maintenance_scope),
-          includedPartsJson: JSON.stringify(Array.isArray(m.included_parts) ? m.included_parts : []),
-          sparePartsSupport: toNullableString(m.spare_parts_support),
-          deepMaintenance: toNullableIntFromBool(m.deep_maintenance) as number | null,
+    const yearlyMaintenance: YearlyMaintenanceItem[] = Array.isArray(yearlyRes.payload?.item_list)
+      ? yearlyRes.payload.item_list.map((item: Record<string, unknown>) => ({
+          serviceType: toNullableString(item.service_type),
+          standardPmPerYear: toNullableNumber(item.standard_pm_per_year),
+          smartPmPerYear: toNullableNumber(item.smart_pm_per_year),
+          remotePmPerYear: toNullableNumber(item.remote_pm_per_year),
+          scope: toStringArray(item.scope),
+          deliverables: toNullableString(item.deliverables),
+          scheduling: toNullableString(item.scheduling),
+          originalContractSnippet: toNullableString(item.original_contract_snippet),
+          devices: extractDeviceList(item.devices_info),
         }))
-      })
-    }
+      : []
 
-    // 数字化
-    const digitals = Array.isArray(digitalPayload?.digital_solutions) ? digitalPayload.digital_solutions : []
-    if (digitals.length) {
-      await prisma.contractDigitalSolutionInfo.createMany({
-        data: digitals.map((ds) => ({
-          contractId,
-          softwareProductName: toNullableString(ds.software_product_name),
-          hardwareProductName: toNullableString(ds.hardware_product_name),
-          quantity: toNullableNumber(ds.quantity) as number | null,
-          servicePeriod: toNullableString(ds.service_period),
+    const remoteMaintenance: RemoteMaintenanceItem[] = Array.isArray(remoteRes.payload?.item_list)
+      ? remoteRes.payload.item_list.map((item: Record<string, unknown>) => ({
+          serviceType: toNullableString(item.service_type),
+          platform: toNullableString(item.platform),
+          ctRemotePmPerYear: toNullableNumber(item.ct_remote_pm_per_year),
+          mrRemotePmPerYear: toNullableNumber(item.mr_remote_pm_per_year),
+          igsRemotePmPerYear: toNullableNumber(item.igs_remote_pm_per_year),
+          drRemotePmPerYear: toNullableNumber(item.dr_remote_pm_per_year),
+          mammoRemotePmPerYear: toNullableNumber(item.mammo_remote_pm_per_year),
+          mobileDrRemotePmPerYear: toNullableNumber(item.mobile_dr_remote_pm_per_year),
+          boneDensityRemotePmPerYear: toNullableNumber(item.bone_density_remote_pm_per_year),
+          usRemotePmPerYear: toNullableNumber(item.us_remote_pm_per_year),
+          otherRemotePmPerYear: toNullableNumber(item.other_remote_pm_per_year),
+          prerequisitesMaxUsersPerDevice: toNullableNumber(item.prerequisites_max_users_per_device),
+          reports: toStringArray(item.reports),
+          originalContractSnippet: toNullableString(item.original_contract_snippet),
         }))
-      })
-    }
+      : []
 
-    // 培训
-    const trainings = Array.isArray(trainingPayload?.training_supports) ? trainingPayload.training_supports : []
-    if (trainings.length) {
-      await prisma.contractTrainingSupportInfo.createMany({
-        data: trainings.map((t) => ({
-          contractId,
-          trainingCategory: toNullableString(t.training_category),
-          applicableDevicesJson: JSON.stringify(Array.isArray(t.applicable_devices) ? t.applicable_devices : []),
-          trainingTimes: toNullableNumber(t.training_times) as number | null,
-          trainingPeriod: toNullableString(t.training_period),
-          trainingDays: toNullableNumber(t.training_days) as number | null,
-          trainingSeats: toNullableNumber(t.training_seats) as number | null,
-          trainingCost: toNullableString(t.training_cost),
+    const trainingSupports: TrainingSupportItem[] = Array.isArray(trainingRes.payload?.item_list)
+      ? trainingRes.payload.item_list.map((item: Record<string, unknown>) => ({
+          serviceType: toNullableString(item.service_type),
+          trainingCategory: toNullableString(item.training_category),
+          applicableDevices: toStringArray(item.applicable_devices),
+          trainingTimes: toNullableNumber(item.training_times),
+          trainingPeriod: toNullableString(item.training_period),
+          trainingDays: toNullableNumber(item.training_days),
+          trainingSeats: toNullableNumber(item.training_seats),
+          trainingCost: toNullableString(item.training_cost),
+          originalContractSnippet: toNullableString(item.original_contract_snippet),
         }))
-      })
-    }
+      : []
 
-    // 合同与合规（单条）
-    if (compliancePayload && typeof compliancePayload === "object") {
-      await prisma.contractComplianceInfo.upsert({
-        where: { contractId },
-        update: {
-          informationConfidentialityRequirements: toNullableIntFromBool(compliancePayload.information_confidentiality_requirements) as number | null,
-          liabilityOfBreach: toNullableString(compliancePayload.liability_of_breach),
-          partsReturnRequirements: toNullableString(compliancePayload.parts_return_requirements),
-          deliveryRequirements: toNullableString(compliancePayload.delivery_requirements),
-          transportationInsurance: toNullableString(compliancePayload.transportation_insurance),
-          deliveryLocation: toNullableString(compliancePayload.delivery_location),
-        },
-        create: {
-          contractId,
-          informationConfidentialityRequirements: toNullableIntFromBool(compliancePayload.information_confidentiality_requirements) as number | null,
-          liabilityOfBreach: toNullableString(compliancePayload.liability_of_breach),
-          partsReturnRequirements: toNullableString(compliancePayload.parts_return_requirements),
-          deliveryRequirements: toNullableString(compliancePayload.delivery_requirements),
-          transportationInsurance: toNullableString(compliancePayload.transportation_insurance),
-          deliveryLocation: toNullableString(compliancePayload.delivery_location),
-        },
-      })
-    }
+    const contractCompliance: ContractComplianceItem | null =
+      complianceRes.payload && typeof complianceRes.payload === "object"
+        ? {
+            informationConfidentialityRequirements: toNullableBoolean(
+              (complianceRes.payload as Record<string, unknown>).information_confidentiality_requirements,
+            ),
+            liabilityOfBreach: toNullableString((complianceRes.payload as Record<string, unknown>).liability_of_breach),
+            partsReturnRequirements: toNullableString(
+              (complianceRes.payload as Record<string, unknown>).parts_return_requirements,
+            ),
+            deliveryRequirements: toNullableString(
+              (complianceRes.payload as Record<string, unknown>).delivery_requirements,
+            ),
+            transportationInsurance: toNullableString(
+              (complianceRes.payload as Record<string, unknown>).transportation_insurance,
+            ),
+            deliveryLocation: toNullableString((complianceRes.payload as Record<string, unknown>).delivery_location),
+          }
+        : null
 
-    // 售后支持（单条）
-    if (afterSalesPayload && typeof afterSalesPayload === "object") {
-      await prisma.contractAfterSalesSupportInfo.upsert({
-        where: { contractId },
-        update: {
-          guaranteeRunningRate: toNullableNumber(afterSalesPayload.guarantee_running_rate) as number | null,
-          guaranteeMechanism: toNullableString(afterSalesPayload.guarantee_mechanism),
-          serviceReportForm: toNullableString(afterSalesPayload.service_report_form),
-          remoteService: toNullableString(afterSalesPayload.remote_service),
-          hotlineSupport: toNullableString(afterSalesPayload.hotline_support),
-          taxFreePartsPriority: toNullableIntFromBool(afterSalesPayload.tax_free_parts_priority) as number | null,
-        },
-        create: {
-          contractId,
-          guaranteeRunningRate: toNullableNumber(afterSalesPayload.guarantee_running_rate) as number | null,
-          guaranteeMechanism: toNullableString(afterSalesPayload.guarantee_mechanism),
-          serviceReportForm: toNullableString(afterSalesPayload.service_report_form),
-          remoteService: toNullableString(afterSalesPayload.remote_service),
-          hotlineSupport: toNullableString(afterSalesPayload.hotline_support),
-          taxFreePartsPriority: toNullableIntFromBool(afterSalesPayload.tax_free_parts_priority) as number | null,
-        },
-      })
-    }
+    const afterSalesSupport: AfterSalesSupportItem | null =
+      afterSalesRes.payload && typeof afterSalesRes.payload === "object"
+        ? {
+            guaranteeRunningRate: toNullableNumber((afterSalesRes.payload as Record<string, unknown>).guarantee_running_rate),
+            guaranteeMechanism: toNullableString((afterSalesRes.payload as Record<string, unknown>).guarantee_mechanism),
+            serviceReportForm: toNullableString((afterSalesRes.payload as Record<string, unknown>).service_report_form),
+            remoteService: toNullableString((afterSalesRes.payload as Record<string, unknown>).remote_service),
+            hotlineSupport: toNullableString((afterSalesRes.payload as Record<string, unknown>).hotline_support),
+            taxFreePartsPriority: toNullableBoolean(
+              (afterSalesRes.payload as Record<string, unknown>).tax_free_parts_priority,
+            ),
+          }
+        : null
 
-    // 关键备件：球管
-    const tubes = Array.isArray(keySparePartsPayload?.tubes) ? keySparePartsPayload.tubes : []
-    if (tubes.length) {
-      await prisma.contractKeySparePartTube.createMany({
-        data: tubes.map((t) => ({
-          contractId,
-          deviceModel: toNullableString(t.device_model),
-          geHostSystemNumber: toNullableString(t.ge_host_system_number),
-          xrTubeId: toNullableString(t.xr_tube_id),
-          manufacturer: toNullableString(t.manufacturer),
-          registrationNumber: toNullableString(t.registration_number),
-          contractStartDate: toNullableString(t.contract_start_date),
-          contractEndDate: toNullableString(t.contract_end_date),
-          responseTime: toNullableNumber(t.response_time) as number | null,
+    const keySpareParts: KeySparePartItem[] = Array.isArray(keySparePartsRes.payload?.item_list)
+      ? keySparePartsRes.payload.item_list.map((item: Record<string, unknown>) => ({
+          serviceType: toNullableString(item.service_type),
+          coveredItems: toStringArray(item.covered_items),
+          replacementPolicy: toNullableString(item.replacement_policy),
+          oldPartReturnRequired: toNullableBoolean(item.old_part_return_required),
+          nonReturnPenaltyPct: toNullableNumber(item.non_return_penalty_pct),
+          logisticsBy: toNullableString(item.logistics_by),
+          leadTimeBusinessDays: toNullableNumber(item.lead_time_business_days),
+          originalContractSnippet: toNullableString(item.original_contract_snippet),
+          tubes: Array.isArray(item.tubes)
+            ? item.tubes.map((tube: Record<string, unknown>) => ({
+                deviceModel: toNullableString(tube.device_model),
+                geHostSystemNumber: toNullableString(tube.ge_host_system_number),
+                xrTubeId: toNullableString(tube.xr_tube_id),
+                manufacturer: toNullableString(tube.manufacturer),
+                registrationNumber: toNullableString(tube.registration_number),
+                contractStartDate: toNullableString(tube.contract_start_date),
+                contractEndDate: toNullableString(tube.contract_end_date),
+                responseTime: toNullableNumber(tube.response_time),
+              }))
+            : [],
+          coils: Array.isArray(item.coils)
+            ? item.coils.map((coil: Record<string, unknown>) => ({
+                geHostSystemNumber: toNullableString(coil.ge_host_system_number),
+                coilOrderNumber: toNullableString(coil.coil_order_number),
+                coilName: toNullableString(coil.coil_name),
+                coilSerialNumber: toNullableString(coil.coil_serial_number),
+              }))
+            : [],
         }))
-      })
+      : []
+
+    const snapshot: ServiceInfoSnapshotPayload = {
+      onsiteSla,
+      yearlyMaintenance,
+      remoteMaintenance,
+      trainingSupports,
+      contractCompliance,
+      afterSalesSupport,
+      keySpareParts,
     }
 
-    // 关键备件：线圈
-    const coils = Array.isArray(keySparePartsPayload?.coils) ? keySparePartsPayload.coils : []
-    if (coils.length) {
-      await prisma.contractKeySparePartCoil.createMany({
-        data: coils.map((c) => ({
-          contractId,
-          geHostSystemNumber: toNullableString(c.ge_host_system_number),
-          coilOrderNumber: toNullableString(c.coil_order_number),
-          coilName: toNullableString(c.coil_name),
-          coilSerialNumber: toNullableString(c.coil_serial_number),
-        }))
-      })
-    }
+    const persisted = await prisma.contractServiceInfoSnapshot.upsert({
+      where: { contractId },
+      update: { payload: JSON.stringify(snapshot) },
+      create: { contractId, payload: JSON.stringify(snapshot) },
+    })
 
     await createProcessingLog({
       ...baseLog,
-      action: "SERVICE_INFO_EXTRACTION",
-      description: "服务信息提取与入库完成",
       status: "SUCCESS",
+      description: "服务信息提取与入库完成",
       durationMs: Date.now() - startedAt,
       metadata: {
-        deviceApiUrl,
-        maintenanceApiUrl,
-        digitalApiUrl,
-        trainingApiUrl,
-        complianceApiUrl,
-        afterSalesApiUrl,
-        keySparePartsApiUrl,
+        urls: {
+          onsiteSla: onsiteRes.url,
+          yearlyMaintenance: yearlyRes.url,
+          remoteMaintenance: remoteRes.url,
+          trainingSupport: trainingRes.url,
+          contractCompliance: complianceRes.url,
+          afterSales: afterSalesRes.url,
+          keySpareParts: keySparePartsRes.url,
+        },
         counts: {
-          devices: devices.length,
-          maintenances: maints.length,
-          digitals: digitals.length,
-          trainings: trainings.length,
-          tubes: tubes.length,
-          coils: coils.length,
+          onsiteSla: onsiteSla.length,
+          yearlyMaintenance: yearlyMaintenance.length,
+          remoteMaintenance: remoteMaintenance.length,
+          trainingSupports: trainingSupports.length,
+          keySparePartBlocks: keySpareParts.length,
         },
       },
     })
+
+    return parseServiceInfoSnapshotPayload(persisted.payload)
   } catch (error) {
     await createProcessingLog({
       ...baseLog,
-      action: "SERVICE_INFO_EXTRACTION",
-      description: "服务信息提取失败",
       status: "ERROR",
+      description: "服务信息提取失败",
       durationMs: Date.now() - startedAt,
       metadata: { error: error instanceof Error ? error.message : String(error) },
     })
-    if (!suppressErrors) {
-      throw error instanceof Error ? error : new Error("服务信息提取失败")
+
+    if (suppressErrors) {
+      return existingSnapshot
+        ? parseServiceInfoSnapshotPayload(existingSnapshot.payload)
+        : createEmptyServiceInfoSnapshot()
     }
+
+    throw error instanceof Error ? error : new Error("服务信息提取失败")
   }
 }
-
-

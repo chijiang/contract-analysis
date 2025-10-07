@@ -8,7 +8,18 @@ import { createProcessingLog } from "@/lib/processing-logs"
 export async function GET() {
   const contracts = await prisma.contract.findMany({
     orderBy: { createdAt: "desc" },
-    include: { basicInfo: true },
+    include: {
+      basicInfo: true,
+      analysis: {
+        select: {
+          id: true,
+          contractId: true,
+          createdAt: true,
+          updatedAt: true,
+          selectedTemplateIds: true,
+        },
+      },
+    },
   })
 
   return NextResponse.json(contracts)

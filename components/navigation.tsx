@@ -27,12 +27,12 @@ const navigation = [
     icon: Layers,
     description: "维护服务组合与条款配置",
   },
-  {
-    name: "已处理合同",
-    href: "/processed-contracts",
-    icon: Archive,
-    description: "查看已审核的合同",
-  },
+  // {
+  //   name: "已处理合同",
+  //   href: "/processed-contracts",
+  //   icon: Archive,
+  //   description: "查看已审核的合同",
+  // },
   {
     name: "处理日志",
     href: "/logs",

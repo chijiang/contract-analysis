@@ -1001,7 +1001,11 @@ export function ContractReviewInterface() {
               />
             </div>
             <div className="mt-6">
-              <ContractServiceInfoPanel contract={contractRecord} markdown={markdownContent || contractRecord?.markdown || ""} />
+              <ContractServiceInfoPanel
+                contract={contractRecord}
+                markdown={markdownContent || contractRecord?.markdown || ""}
+                onLocateText={navigateToText}
+              />
             </div>
           </div>
         )}

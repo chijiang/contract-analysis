@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { createProcessingLog } from "@/lib/processing-logs"
-import { extractAndPersistServiceInfo } from "@/app/api/contracts/_helpers/service-info"
+import {
+  extractAndPersistServiceInfo,
+  parseServiceInfoSnapshotPayload,
+} from "@/app/api/contracts/_helpers/service-info"
 
 type RouteContext = { params: { contractId: string } }
 
@@ -11,25 +14,12 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ message: "缺少合同ID" }, { status: 400 })
   }
 
-  const [devices, maints, digitals, trainings, compliance, afterSales, tubes, coils] = await Promise.all([
-    prisma.contractDeviceInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-    prisma.contractMaintenanceServiceInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-    prisma.contractDigitalSolutionInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-    prisma.contractTrainingSupportInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-    prisma.contractComplianceInfo.findUnique({ where: { contractId } }),
-    prisma.contractAfterSalesSupportInfo.findUnique({ where: { contractId } }),
-    prisma.contractKeySparePartTube.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-    prisma.contractKeySparePartCoil.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-  ])
+  const snapshot = await prisma.contractServiceInfoSnapshot.findUnique({ where: { contractId } })
+  const payload = parseServiceInfoSnapshotPayload(snapshot?.payload)
 
   return NextResponse.json({
-    devices,
-    maintenanceServices: maints,
-    digitalSolutions: digitals,
-    trainingSupports: trainings,
-    complianceInfo: compliance,
-    afterSalesSupport: afterSales,
-    keySpareParts: { tubes, coils },
+    source: snapshot ? "cached" : "empty",
+    snapshot: payload,
   })
 }
 
@@ -51,7 +41,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   }
 
   try {
-    await extractAndPersistServiceInfo(contractId, content, { suppressErrors: false })
+    const snapshot = await extractAndPersistServiceInfo(contractId, content, { suppressErrors: false })
 
     await createProcessingLog({
       contractId,
@@ -62,26 +52,9 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       durationMs: Date.now() - startedAt,
     })
 
-    const data = await prisma.$transaction([
-      prisma.contractDeviceInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-      prisma.contractMaintenanceServiceInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-      prisma.contractDigitalSolutionInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-      prisma.contractTrainingSupportInfo.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-      prisma.contractComplianceInfo.findUnique({ where: { contractId } }),
-      prisma.contractAfterSalesSupportInfo.findUnique({ where: { contractId } }),
-      prisma.contractKeySparePartTube.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-      prisma.contractKeySparePartCoil.findMany({ where: { contractId }, orderBy: { createdAt: "asc" } }),
-    ])
-
     return NextResponse.json({
       source: "fresh",
-      devices: data[0],
-      maintenanceServices: data[1],
-      digitalSolutions: data[2],
-      trainingSupports: data[3],
-      complianceInfo: data[4],
-      afterSalesSupport: data[5],
-      keySpareParts: { tubes: data[6], coils: data[7] },
+      snapshot,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -97,5 +70,4 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ message }, { status: 500 })
   }
 }
-
 
