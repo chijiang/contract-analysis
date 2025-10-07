@@ -1,10 +1,6 @@
 import * as XLSX from "xlsx"
 
-import {
-  servicePlanPayloadSchema,
-  type SerializedServicePlan,
-  type ServicePlanPayload,
-} from "@/lib/service-plans"
+import { servicePlanClausePayloadSchema, servicePlanPayloadSchema, type SerializedServicePlan, type ServicePlanClausePayload, type ServicePlanPayload } from "@/lib/service-plans"
 
 export type ServicePlanExcelEntry = {
   id: string | null
@@ -16,69 +12,13 @@ export type ServicePlanExcelParseResult = {
   errors: string[]
 }
 
-const HEADERS = [
-  "id",
-  "name",
-  "termMonths",
-  "sites",
-  "modalities",
-  "metadata",
-  "modules",
-] as const
+const HEADERS = ["id", "name", "description", "clauses"] as const
 
 type HeaderKey = (typeof HEADERS)[number]
-
 type RawRow = Partial<Record<HeaderKey, unknown>>
 
 const stringify = (value: unknown) =>
   value === undefined || value === null || value === "" ? "" : JSON.stringify(value, null, 2)
-
-const parseOptionalJson = (value: unknown) => {
-  if (value === undefined || value === null) return undefined
-  const text = typeof value === "string" ? value.trim() : String(value)
-  if (!text) return undefined
-  try {
-    return JSON.parse(text)
-  } catch (error) {
-    throw new Error(`JSON 解析失败: ${text}`)
-  }
-}
-
-const parseOptionalNumber = (value: unknown) => {
-  if (value === undefined || value === null || value === "") return undefined
-  const num = typeof value === "number" ? value : Number(String(value))
-  if (Number.isNaN(num)) {
-    throw new Error(`无法解析数字：${value}`)
-  }
-  return num
-}
-
-export const servicePlansToWorkbook = (plans: SerializedServicePlan[]): Buffer => {
-  const rows = plans.map((plan) => ({
-    id: plan.id,
-    name: plan.name,
-    termMonths: plan.termMonths ?? "",
-    sites: stringify(plan.sites.length ? plan.sites : undefined),
-    modalities: stringify(plan.modalities.length ? plan.modalities : undefined),
-    metadata: stringify(plan.metadata),
-    modules: stringify(
-      plan.modules.map((module) => ({
-        templateId: module.templateId,
-        templateName: module.templateName,
-        type: module.type,
-        status: module.status ?? module.templateStatus,
-        isDefault: module.isDefault,
-        overrides: module.overrides,
-        orderIndex: module.orderIndex,
-      })),
-    ),
-  }))
-
-  const worksheet = XLSX.utils.json_to_sheet(rows, { header: HEADERS as unknown as string[] })
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, worksheet, "ServicePlans")
-  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer
-}
 
 const normalizeRow = (row: Record<string, unknown>): RawRow => {
   const normalized: RawRow = {}
@@ -90,6 +30,56 @@ const normalizeRow = (row: Record<string, unknown>): RawRow => {
     }
   }
   return normalized
+}
+
+const parseClauses = (value: unknown): ServicePlanClausePayload[] => {
+  if (value === undefined || value === null || value === "") {
+    return []
+  }
+  const text = typeof value === "string" ? value.trim() : String(value)
+  if (!text) return []
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch (error) {
+    throw new Error("条款字段不是合法的 JSON")
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("条款字段必须是数组")
+  }
+  return parsed.map((item, index) => {
+    const result = servicePlanClausePayloadSchema.safeParse(item)
+    if (!result.success) {
+      const issue = result.error.issues[0]
+      const message = issue ? `${issue.path.join(".")}: ${issue.message}` : "条款结构不完整"
+      throw new Error(`第 ${index + 1} 条条款校验失败：${message}`)
+    }
+    return result.data
+  })
+}
+
+export const servicePlansToWorkbook = (plans: SerializedServicePlan[]): Buffer => {
+  const rows = plans.map((plan) => ({
+    id: plan.id,
+    name: plan.name,
+    description: plan.description ?? "",
+    clauses: stringify(
+      plan.clauses.map((clause) => ({
+        category: clause.category,
+        clauseItem: clause.clauseItem,
+        requirement: clause.requirement,
+        notes: clause.notes,
+        orderIndex: clause.orderIndex,
+      })),
+    ),
+  }))
+
+  const worksheet = XLSX.utils.json_to_sheet(rows, { header: HEADERS as unknown as string[] })
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, "ServicePlans")
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer
 }
 
 export const parseServicePlanWorkbook = (buffer: ArrayBuffer): ServicePlanExcelParseResult => {
@@ -119,62 +109,30 @@ export const parseServicePlanWorkbook = (buffer: ArrayBuffer): ServicePlanExcelP
     }
     payload.name = name
 
-    try {
-      const term = parseOptionalNumber(normalized.termMonths)
-      if (term !== undefined) {
-        payload.termMonths = term
-      }
-
-      const sites = parseOptionalJson(normalized.sites)
-      if (Array.isArray(sites)) {
-        payload.sites = sites.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-      }
-
-      const modalities = parseOptionalJson(normalized.modalities)
-      if (Array.isArray(modalities)) {
-        payload.modalities = modalities.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-      }
-
-      const metadata = parseOptionalJson(normalized.metadata)
-      if (metadata !== undefined) {
-        payload.metadata = metadata
-      }
-
-      const modules = parseOptionalJson(normalized.modules)
-      if (Array.isArray(modules)) {
-        const selections = modules
-          .map((module) => {
-            if (!module || typeof module !== "object") return null
-            const record = module as Record<string, unknown>
-            const templateId = typeof record.templateId === "string" ? record.templateId.trim() : ""
-            if (!templateId) return null
-            return {
-              templateId,
-              isDefault: Boolean(record.isDefault),
-              status: typeof record.status === "string" ? record.status : undefined,
-              overrides: record.overrides,
-              orderIndex:
-                typeof record.orderIndex === "number"
-                  ? record.orderIndex
-                  : Number.isFinite(Number(record.orderIndex))
-                    ? Number(record.orderIndex)
-                    : undefined,
-            }
-          })
-          .filter((item): item is Record<string, unknown> => item !== null)
-
-        payload.modules = selections as ServicePlanPayload["modules"]
-      }
-
-      const parsedPayload = servicePlanPayloadSchema.parse(payload)
-      entries.push({ id: typeof normalized.id === "string" && normalized.id.trim() ? normalized.id.trim() : null, payload: parsedPayload })
-    } catch (error) {
-      errors.push(
-        error instanceof Error
-          ? `第 ${rowNumber} 行解析失败：${error.message}`
-          : `第 ${rowNumber} 行解析失败`,
-      )
+    if (typeof normalized.description === "string") {
+      payload.description = normalized.description.trim() || undefined
     }
+
+    try {
+      const clauses = parseClauses(normalized.clauses)
+      payload.clauses = clauses
+    } catch (error) {
+      errors.push(`第 ${rowNumber} 行条款解析失败：${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+
+    const validation = servicePlanPayloadSchema.safeParse(payload)
+    if (!validation.success) {
+      const issue = validation.error.issues[0]
+      const message = issue ? `${issue.path.join(".")}: ${issue.message}` : "结构校验失败"
+      errors.push(`第 ${rowNumber} 行校验失败：${message}`)
+      return
+    }
+
+    entries.push({
+      id: typeof normalized.id === "string" && normalized.id.trim().length > 0 ? normalized.id.trim() : null,
+      payload: validation.data,
+    })
   })
 
   return { entries, errors }

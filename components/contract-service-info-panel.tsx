@@ -115,18 +115,30 @@ const OnsiteSlaSection = ({ items, onLocateText }: { items: OnsiteSlaItem[]; onL
       <div className="space-y-4">
         {items.map((item, index) => (
           <div key={`onsite-${index}`} className="space-y-3 rounded-md border border-border/60 p-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="font-medium">
-                  服务类型：{item.serviceType ? item.serviceType : "未明确"}
+              <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-muted-foreground shrink-0">服务类型</span>
+                  <span className="rounded-md bg-primary/5 px-2 py-1 text-sm font-medium text-primary">
+                    {item.serviceType ? item.serviceType : "未明确"}
+                  </span>
                 </div>
-                <div className="text-sm text-muted-foreground">覆盖时段：{item.coverage ?? "—"}</div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-muted-foreground shrink-0">覆盖时段</span>
+                  <span className="text-sm">{item.coverage ?? "—"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-muted-foreground shrink-0">响应时间</span>
+                  <span className="rounded-md bg-blue-50 px-2 py-1 text-sm font-semibold text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+                    {formatNumber(item.responseTimeHours, { unit: "h" })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-muted-foreground shrink-0">到场时间</span>
+                  <span className="rounded-md bg-green-50 px-2 py-1 text-sm font-semibold text-green-700 dark:bg-green-900/20 dark:text-green-300">
+                    {formatNumber(item.onSiteTimeHours, { unit: "h" })}
+                  </span>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-sm md:text-right">
-                <div>响应时间：{formatNumber(item.responseTimeHours, { unit: "h" })}</div>
-                <div>到场时间：{formatNumber(item.onSiteTimeHours, { unit: "h" })}</div>
-              </div>
-            </div>
             {renderDeviceTable(item.devices)}
             {renderLocateButton(item.originalContractSnippet, onLocateText)}
           </div>
@@ -145,14 +157,47 @@ const YearlyMaintenanceSection = ({ items, onLocateText }: { items: YearlyMainte
       <div className="space-y-4">
         {items.map((item, index) => (
           <div key={`yearly-${index}`} className="space-y-3 rounded-md border border-border/60 p-3">
-            <div className="font-medium">服务类型：{item.serviceType ?? "未明确"}</div>
-            <div className="grid gap-2 text-sm md:grid-cols-2">
-              <div>标准保养次数：{formatNumber(item.standardPmPerYear)}</div>
-              <div>精智保养次数：{formatNumber(item.smartPmPerYear)}</div>
-              <div>远程保养次数：{formatNumber(item.remotePmPerYear)}</div>
-              <div>保养范围：{formatList(item.scope)}</div>
-              <div>交付物：{item.deliverables ?? "—"}</div>
-              <div>排期要求：{item.scheduling ?? "—"}</div>
+            <div className="mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm font-medium text-muted-foreground min-w-[4rem]">服务类型</span>
+                <span className="rounded-md bg-primary/5 px-2 py-1 text-sm font-medium text-primary">
+                  {item.serviceType ?? "未明确"}
+                </span>
+              </div>
+            </div>
+            <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 lg:grid-cols-3">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">标准保养次数</span>
+                <span className="rounded-md bg-orange-50 px-2 py-1 font-semibold text-orange-700 dark:bg-orange-900/20 dark:text-orange-300">
+                  {formatNumber(item.standardPmPerYear)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">精智保养次数</span>
+                <span className="rounded-md bg-purple-50 px-2 py-1 font-semibold text-purple-700 dark:bg-purple-900/20 dark:text-purple-300">
+                  {formatNumber(item.smartPmPerYear)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">远程保养次数</span>
+                <span className="rounded-md bg-indigo-50 px-2 py-1 font-semibold text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300">
+                  {formatNumber(item.remotePmPerYear)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 lg:col-span-3">
+                <span className="font-medium text-muted-foreground shrink-0">保养范围</span>
+                <span className="rounded-md bg-gray-50 px-2 py-1 text-gray-700 dark:bg-gray-900/20 dark:text-gray-300">
+                  {formatList(item.scope)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 lg:col-span-3">
+                <span className="font-medium text-muted-foreground shrink-0">交付物</span>
+                <span className="text-sm">{item.deliverables ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-2 lg:col-span-3">
+                <span className="font-medium text-muted-foreground shrink-0">排期要求</span>
+                <span className="text-sm">{item.scheduling ?? "—"}</span>
+              </div>
             </div>
             {renderDeviceTable(item.devices)}
             {renderLocateButton(item.originalContractSnippet, onLocateText)}
@@ -185,22 +230,39 @@ const RemoteMaintenanceSection = ({ items, onLocateText }: { items: RemoteMainte
 
           return (
             <div key={`remote-${index}`} className="space-y-3 rounded-md border border-border/60 p-3">
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div className="font-medium">服务类型：{item.serviceType ?? "未明确"}</div>
-                <div className="text-sm text-muted-foreground">远程平台：{item.platform ?? "—"}</div>
-              </div>
-              <div className="grid gap-2 text-sm md:grid-cols-2">
-                {modalityCounts.map(([label, value]) => (
-                  <div key={label} className="flex items-center justify-between">
-                    <span>{label} 年度远程保养：</span>
-                    <span>{formatNumber(value)}</span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between">
-                  <span>账号上限：</span>
-                  <span>{formatNumber(item.prerequisitesMaxUsersPerDevice)}</span>
+              <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 lg:grid-cols-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-muted-foreground shrink-0">服务类型</span>
+                  <span className="rounded-md bg-primary/5 px-2 py-1 text-sm font-medium text-primary">
+                    {item.serviceType ?? "未明确"}
+                  </span>
                 </div>
-                <div className="md:col-span-2">报告类型：{formatList(item.reports)}</div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-muted-foreground shrink-0">远程平台</span>
+                  <span className="text-sm">{item.platform ?? "—"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-muted-foreground shrink-0">账号上限</span>
+                  <span className="rounded-md bg-teal-50 px-2 py-1 text-sm font-semibold text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+                    {formatNumber(item.prerequisitesMaxUsersPerDevice)}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {modalityCounts.map(([label, value]) => (
+                    <div key={label} className="flex items-center gap-2">
+                      <span className="font-medium text-muted-foreground shrink-0">{label} 年度远程保养</span>
+                      <span className="rounded-md bg-cyan-50 px-2 py-1 font-semibold text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300">
+                        {formatNumber(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 pt-2 border-t mt-3">
+                  <span className="font-medium text-muted-foreground shrink-0">报告类型</span>
+                  <span className="text-sm">{formatList(item.reports)}</span>
+                </div>
               </div>
               {renderLocateButton(item.originalContractSnippet, onLocateText)}
             </div>
@@ -220,15 +282,51 @@ const TrainingSupportSection = ({ items, onLocateText }: { items: TrainingSuppor
       <div className="space-y-4">
         {items.map((item, index) => (
           <div key={`training-${index}`} className="space-y-3 rounded-md border border-border/60 p-3">
-            <div className="font-medium">培训类别：{item.trainingCategory ?? "未明确"}</div>
-            <div className="grid gap-2 text-sm md:grid-cols-2">
-              <div>服务类型：{item.serviceType ?? "—"}</div>
-              <div>适用设备：{formatList(item.applicableDevices)}</div>
-              <div>培训次数：{formatNumber(item.trainingTimes)}</div>
-              <div>培训周期：{item.trainingPeriod ?? "—"}</div>
-              <div>每次天数：{formatNumber(item.trainingDays)}</div>
-              <div>每次名额：{formatNumber(item.trainingSeats)}</div>
-              <div className="md:col-span-2">费用说明：{item.trainingCost ?? "—"}</div>
+            <div className="mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm font-medium text-muted-foreground min-w-[4rem]">培训类别</span>
+                <span className="rounded-md bg-primary/5 px-2 py-1 text-sm font-medium text-primary">
+                  {item.trainingCategory ?? "未明确"}
+                </span>
+              </div>
+            </div>
+            <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 lg:grid-cols-3">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">服务类型</span>
+                <span className="text-sm">{item.serviceType ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">适用设备</span>
+                <span className="rounded-md bg-gray-50 px-2 py-1 text-gray-700 dark:bg-gray-900/20 dark:text-gray-300">
+                  {formatList(item.applicableDevices)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">培训次数</span>
+                <span className="rounded-md bg-pink-50 px-2 py-1 font-semibold text-pink-700 dark:bg-pink-900/20 dark:text-pink-300">
+                  {formatNumber(item.trainingTimes)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">培训周期</span>
+                <span className="text-sm">{item.trainingPeriod ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">每次天数</span>
+                <span className="rounded-md bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                  {formatNumber(item.trainingDays)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">每次名额</span>
+                <span className="rounded-md bg-violet-50 px-2 py-1 font-semibold text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
+                  {formatNumber(item.trainingSeats)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 lg:col-span-3">
+                <span className="font-medium text-muted-foreground shrink-0">费用说明</span>
+                <span className="text-sm">{item.trainingCost ?? "—"}</span>
+              </div>
             </div>
             {renderLocateButton(item.originalContractSnippet, onLocateText)}
           </div>
@@ -247,14 +345,43 @@ const KeySparePartsSection = ({ items, onLocateText }: { items: KeySparePartItem
       <div className="space-y-4">
         {items.map((item, index) => (
           <div key={`spare-${index}`} className="space-y-3 rounded-md border border-border/60 p-3">
-            <div className="grid gap-2 text-sm md:grid-cols-2">
-              <div>服务类型：{item.serviceType ?? "—"}</div>
-              <div>覆盖部件：{formatList(item.coveredItems)}</div>
-              <div>更换策略：{item.replacementPolicy ?? "—"}</div>
-              <div>旧件回收：{formatBoolean(item.oldPartReturnRequired)}</div>
-              <div>不回收赔付上限：{formatNumber(item.nonReturnPenaltyPct, { unit: "%" })}</div>
-              <div>物流承担方：{item.logisticsBy ?? "—"}</div>
-              <div>发货/更换时效：{formatNumber(item.leadTimeBusinessDays, { unit: "个工作日" })}</div>
+            <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 lg:grid-cols-3">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">服务类型</span>
+                <span className="text-sm">{item.serviceType ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">覆盖部件</span>
+                <span className="rounded-md bg-gray-50 px-2 py-1 text-gray-700 dark:bg-gray-900/20 dark:text-gray-300">
+                  {formatList(item.coveredItems)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">更换策略</span>
+                <span className="text-sm">{item.replacementPolicy ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">旧件回收</span>
+                <span className="rounded-md bg-slate-50 px-2 py-1 text-slate-700 dark:bg-slate-900/20 dark:text-slate-300">
+                  {formatBoolean(item.oldPartReturnRequired)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">不回收赔付上限</span>
+                <span className="rounded-md bg-red-50 px-2 py-1 font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-300">
+                  {formatNumber(item.nonReturnPenaltyPct, { unit: "%" })}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-muted-foreground shrink-0">物流承担方</span>
+                <span className="text-sm">{item.logisticsBy ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-2 lg:col-span-3">
+                <span className="font-medium text-muted-foreground shrink-0">发货/更换时效</span>
+                <span className="rounded-md bg-amber-50 px-2 py-1 font-semibold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                  {formatNumber(item.leadTimeBusinessDays, { unit: "个工作日" })}
+                </span>
+              </div>
             </div>
             {item.tubes.length ? (
               <div>
@@ -338,14 +465,34 @@ const ContractComplianceSection = ({ item }: { item: ContractComplianceItem | nu
     {!item ? (
       <div className="text-sm text-muted-foreground">暂无数据</div>
     ) : (
-      <ul className="space-y-2 text-sm">
-        <li>信息保密要求：{formatBoolean(item.informationConfidentialityRequirements)}</li>
-        <li>违约责任：{item.liabilityOfBreach ?? "—"}</li>
-        <li>配件退还要求：{item.partsReturnRequirements ?? "—"}</li>
-        <li>交付要求：{item.deliveryRequirements ?? "—"}</li>
-        <li>运输保险：{item.transportationInsurance ?? "—"}</li>
-        <li>到货地点：{item.deliveryLocation ?? "—"}</li>
-      </ul>
+      <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-muted-foreground shrink-0">信息保密要求</span>
+          <span className="rounded-md bg-slate-50 px-2 py-1 text-slate-700 dark:bg-slate-900/20 dark:text-slate-300">
+            {formatBoolean(item.informationConfidentialityRequirements)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 md:col-span-2">
+          <span className="font-medium text-muted-foreground shrink-0">违约责任</span>
+          <span className="text-sm">{item.liabilityOfBreach ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2 md:col-span-2">
+          <span className="font-medium text-muted-foreground shrink-0">配件退还要求</span>
+          <span className="text-sm">{item.partsReturnRequirements ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2 md:col-span-2">
+          <span className="font-medium text-muted-foreground shrink-0">交付要求</span>
+          <span className="text-sm">{item.deliveryRequirements ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-muted-foreground shrink-0">运输保险</span>
+          <span className="text-sm">{item.transportationInsurance ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-muted-foreground shrink-0">到货地点</span>
+          <span className="text-sm">{item.deliveryLocation ?? "—"}</span>
+        </div>
+      </div>
     )}
   </section>
 )
@@ -356,14 +503,36 @@ const AfterSalesSupportSection = ({ item }: { item: AfterSalesSupportItem | null
     {!item ? (
       <div className="text-sm text-muted-foreground">暂无数据</div>
     ) : (
-      <ul className="space-y-2 text-sm">
-        <li>开机保证率：{formatNumber(item.guaranteeRunningRate, { unit: "%" })}</li>
-        <li>保证机制：{item.guaranteeMechanism ?? "—"}</li>
-        <li>服务报告形式：{item.serviceReportForm ?? "—"}</li>
-        <li>远程服务：{item.remoteService ?? "—"}</li>
-        <li>热线支持：{item.hotlineSupport ?? "—"}</li>
-        <li>保税库备件优先：{formatBoolean(item.taxFreePartsPriority)}</li>
-      </ul>
+      <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-muted-foreground shrink-0">开机保证率</span>
+          <span className="rounded-md bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+            {formatNumber(item.guaranteeRunningRate, { unit: "%" })}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-muted-foreground shrink-0">保税库备件优先</span>
+          <span className="rounded-md bg-blue-50 px-2 py-1 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+            {formatBoolean(item.taxFreePartsPriority)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 md:col-span-2">
+          <span className="font-medium text-muted-foreground shrink-0">保证机制</span>
+          <span className="text-sm">{item.guaranteeMechanism ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2 md:col-span-2">
+          <span className="font-medium text-muted-foreground shrink-0">服务报告形式</span>
+          <span className="text-sm">{item.serviceReportForm ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2 md:col-span-2">
+          <span className="font-medium text-muted-foreground shrink-0">远程服务</span>
+          <span className="text-sm">{item.remoteService ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2 md:col-span-2">
+          <span className="font-medium text-muted-foreground shrink-0">热线支持</span>
+          <span className="text-sm">{item.hotlineSupport ?? "—"}</span>
+        </div>
+      </div>
     )}
   </section>
 )

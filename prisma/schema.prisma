@@ -273,73 +273,30 @@ model ContractKeySparePartCoil {
   @@index([contractId])
 }
 model ServicePlan {
-  id         String   @id @default(cuid())
-  name       String
-  termMonths Int?
-  sites      String?
-  metadata   String?
+  id          String              @id @default(cuid())
+  name        String
+  description String?
 
-  modalities PlanModality[]
-  modules    ServicePlanModule[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  clauses   ServicePlanClause[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 
   @@index([name])
 }
 
-model PlanModality {
-  id       String      @id @default(cuid())
-  plan     ServicePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-  planId   String
-  modality String
+model ServicePlanClause {
+  id          String      @id @default(cuid())
+  planId      String
+  category    String?
+  clauseItem  String
+  requirement String
+  notes       String?
+  orderIndex  Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
-  @@unique([planId, modality])
-}
+  plan ServicePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-model ServiceModuleTemplate {
-  id        String             @id @default(cuid())
-  type      String
-  name      String
-  status    String
-  payload   String
-  notes     String?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-
-  versions ServiceModuleVersion[]
-  usages   ServicePlanModule[]
-
-  @@index([type, status])
-  @@index([name])
-}
-
-model ServiceModuleVersion {
-  id         String @id @default(cuid())
-  templateId String
-  payload    String
-  metadata   String?
-  createdAt  DateTime @default(now())
-
-  template ServiceModuleTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-}
-
-model ServicePlanModule {
-  id         String   @id @default(cuid())
-  planId     String
-  templateId String
-  type       String
-  isDefault  Boolean @default(false)
-  status     String?
-  overrides  String?
-  orderIndex Int     @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  plan     ServicePlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
-  template ServiceModuleTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
-
-  @@index([planId, type])
-  @@index([templateId])
+  @@index([planId])
   @@index([planId, orderIndex])
 }

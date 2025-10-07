@@ -16,8 +16,9 @@ export async function GET() {
 
   const serialized = plans.map(serializeServicePlan)
   const buffer = servicePlansToWorkbook(serialized)
+  const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
 
-  return new NextResponse(buffer, {
+  return new NextResponse(arrayBuffer, {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

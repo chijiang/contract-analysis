@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
-import {
-  SerializedServicePlan,
-  servicePlanDetailInclude,
-  servicePlanPayloadSchema,
-  serializeServicePlan,
-} from "@/lib/service-plans"
-
-import { buildPlanUpdateData } from "@/lib/service-plans"
-import { buildPlanModuleInputs as resolveModuleInputs, replacePlanModules } from "@/lib/service-plan-modules"
-
 import { Prisma } from "@prisma/client"
+
+import { SerializedServicePlan, buildPlanUpdateData, mapClausesForCreateMany, servicePlanDetailInclude, servicePlanPayloadSchema, serializeServicePlan } from "@/lib/service-plans"
 
 const notFound = () => NextResponse.json({ message: "未找到对应的服务计划" }, { status: 404 })
 
@@ -50,31 +42,13 @@ export async function PATCH(
 
       await tx.servicePlan.update({ where: { id: params.planId }, data: updateData })
 
-      if (parsed.data.modalities !== undefined) {
-        const modalitySet = Array.from(new Set(parsed.data.modalities))
-        await tx.planModality.deleteMany({ where: { planId: params.planId } })
-        if (modalitySet.length > 0) {
-          await tx.planModality.createMany({
-            data: modalitySet.map((modality) => ({ planId: params.planId, modality })),
+      if (parsed.data.clauses !== undefined) {
+        await tx.servicePlanClause.deleteMany({ where: { planId: params.planId } })
+        if (parsed.data.clauses.length > 0) {
+          await tx.servicePlanClause.createMany({
+            data: mapClausesForCreateMany(parsed.data.clauses, params.planId),
           })
         }
-      }
-
-      if (parsed.data.modules !== undefined) {
-        const templateIds = Array.from(new Set(parsed.data.modules.map((module) => module.templateId)))
-        const templates = await tx.serviceModuleTemplate.findMany({ where: { id: { in: templateIds } } })
-        const templatesMap = Object.fromEntries(templates.map((template) => [template.id, template]))
-
-        if (templateIds.some((id) => !templatesMap[id])) {
-          throw new Error("INVALID_TEMPLATE")
-        }
-
-        await replacePlanModules({
-          tx,
-          planId: params.planId,
-          selections: parsed.data.modules,
-          templatesMap,
-        })
       }
 
       const updated = await tx.servicePlan.findUnique({
@@ -91,9 +65,6 @@ export async function PATCH(
 
     return NextResponse.json(serializeServicePlan(result))
   } catch (error) {
-    if (error instanceof Error && error.message === "INVALID_TEMPLATE") {
-      return NextResponse.json({ message: "存在无效的服务模块模板ID" }, { status: 400 })
-    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       return notFound()
     }
