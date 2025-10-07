@@ -6,10 +6,10 @@ import {
   parseServiceInfoSnapshotPayload,
 } from "@/app/api/contracts/_helpers/service-info"
 
-type RouteContext = { params: { contractId: string } }
+type RouteContext = { params: Promise<{ contractId: string }> }
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
-  const { contractId } = params
+  const { contractId } = await params
   if (!contractId) {
     return NextResponse.json({ message: "缺少合同ID" }, { status: 400 })
   }
@@ -24,7 +24,8 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 }
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
-  const { contractId } = params
+  const { contractId } = await params
+  
   if (!contractId) {
     return NextResponse.json({ message: "缺少合同ID" }, { status: 400 })
   }
@@ -52,12 +53,30 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       durationMs: Date.now() - startedAt,
     })
 
+    // 更新合同处理状态为完成（如果当前处于失败状态）
+    const currentContract = await prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { processingStatus: true },
+    })
+    
+    if (currentContract?.processingStatus === "FAILED" || currentContract?.processingStatus === "PROCESSING_SERVICE_INFO") {
+      await prisma.contract.update({
+        where: { id: contractId },
+        data: { 
+          processingStatus: "COMPLETED",
+          processingError: null,
+          updatedAt: new Date(),
+        },
+      })
+    }
+
     return NextResponse.json({
       source: "fresh",
       snapshot,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    
     await createProcessingLog({
       contractId,
       action: "SERVICE_INFO_EXTRACTION",

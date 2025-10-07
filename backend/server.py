@@ -13,10 +13,13 @@ from models.service_plan import (
     ContractAndComplianceInfoExtractionResult, 
     AfterSalesSupportInfoModel,
     InfoExtractionRequest, 
+    ServicePlanRecommendationRequest,
+    ServicePlanRecommendationLLMOutput,
 )
 from service.pdf_converter import OcrPdfParser
 from service.non_statndard_detection import NonStandardDetectionAgent
 from service.contract_info_extraction import ContractInfoExtractionAgent
+from service.service_plan_recommendation import ServicePlanRecommendationAgent
 from config import PORT
 import uuid
 import os
@@ -58,6 +61,7 @@ app.add_middleware(
 ocr_parser = OcrPdfParser()
 non_standard_detector = NonStandardDetectionAgent()
 contract_info_extractor = ContractInfoExtractionAgent()
+service_plan_recommender = ServicePlanRecommendationAgent()
 
 @app.post("/api/v1/pdf_to_markdown", tags=["File Reading"])
 async def pdf_to_markdown(file: UploadFile = File(...)):
@@ -144,6 +148,12 @@ async def yearly_maintenance_info_extraction(req: InfoExtractionRequest):
 async def remote_maintenance_info_extraction(req: InfoExtractionRequest):
     markdown = req.content
     result = await contract_info_extractor.extract_remote_maintenance_info(markdown)
+    return result
+
+
+@app.post("/api/v1/service_plan_recommendation", response_model=ServicePlanRecommendationLLMOutput, tags=["Service Plans"])
+async def service_plan_recommendation(req: ServicePlanRecommendationRequest):
+    result = await service_plan_recommender.recommend(req)
     return result
 
 if __name__ == "__main__":

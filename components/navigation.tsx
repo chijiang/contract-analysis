@@ -10,22 +10,22 @@ import { cn } from "@/lib/utils"
 
 const navigation = [
   {
-    name: "合同审核",
+    name: "合同分析",
     href: "/",
     icon: FileText,
     description: "PDF合同预览和条款分析",
   },
   {
-    name: "标准条款管理",
-    href: "/standard-terms",
-    icon: BookOpen,
-    description: "管理标准条款库",
-  },
-  {
-    name: "服务计划管理",
+    name: "Service Plan管理",
     href: "/service-plans",
     icon: Layers,
     description: "维护服务组合与条款配置",
+  },
+  {
+    name: "审核标准管理",
+    href: "/standard-terms",
+    icon: BookOpen,
+    description: "管理审核标准条款库",
   },
   // {
   //   name: "已处理合同",

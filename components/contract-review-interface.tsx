@@ -288,7 +288,7 @@ export function ContractReviewInterface() {
       }
     } catch (error) {
       setTemplatesStatus("error")
-      setTemplatesError(error instanceof Error ? error.message : "加载产品合同模板失败")
+      setTemplatesError(error instanceof Error ? error.message : "加载审核模板失败")
     }
   }, [])
 
@@ -337,7 +337,7 @@ export function ContractReviewInterface() {
   useEffect(() => {
     loadTemplates().catch(() => {
       setTemplatesStatus("error")
-      setTemplatesError("加载产品合同模板失败")
+      setTemplatesError("加载审核模板失败")
     })
   }, [loadTemplates])
 
@@ -666,7 +666,7 @@ export function ContractReviewInterface() {
 
       if (!templateIds.length) {
         setAnalysisStatus("error")
-        setAnalysisError("请至少选择一个产品合同模板")
+        setAnalysisError("请至少选择一个审核模板")
         return
       }
 
@@ -768,7 +768,7 @@ export function ContractReviewInterface() {
       }
       if (templates.length === 0) {
         setAnalysisStatus("error")
-        setAnalysisError("暂无可用的产品合同模板，请先在标准条款页面创建。")
+        setAnalysisError("暂无可用的审核模板，请先在标准条款页面创建。")
         return
       }
 
@@ -797,7 +797,7 @@ export function ContractReviewInterface() {
     }
 
     if (pendingTemplateSelection.length === 0) {
-      setTemplateDialogError("请至少选择一个产品合同模板")
+      setTemplateDialogError("请至少选择一个审核模板")
       return
     }
 

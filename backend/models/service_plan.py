@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -192,6 +192,67 @@ class TrainingBlock(BaseModel):
     params: Optional[TrainingSupportInfoModel] = Field(
         None, description="培训参数（仅当 included 为 True 时填写）"
     )
+
+
+class ServicePlanCandidateClause(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    category: Optional[str] = Field(None, description="服务计划条款分类", alias="category")
+    clause_item: str = Field(..., description="服务计划条款名称", alias="clauseItem")
+    requirement: str = Field(..., description="服务计划条款要求", alias="requirement")
+    notes: Optional[str] = Field(None, description="服务计划条款备注", alias="notes")
+
+
+class ServicePlanCandidate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    plan_id: str = Field(..., description="服务计划ID", alias="planId")
+    plan_name: str = Field(..., description="服务计划名称", alias="planName")
+    description: Optional[str] = Field(None, description="服务计划描述")
+    clauses: List[ServicePlanCandidateClause] = Field(..., description="服务计划条款清单")
+
+
+class ServiceClauseForMatching(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    clause_id: str = Field(..., description="合同条款唯一标识", alias="clauseId")
+    clause_type: str = Field(..., description="条款类型，例如 onsite_sla / yearly_maintenance / remote_maintenance / training_support / key_spare_parts", alias="clauseType")
+    clause_text: str = Field(..., description="条款的结构化描述文本", alias="clauseText")
+    structured_attributes: Optional[Dict[str, str]] = Field(None, description="条款的关键字段键值对", alias="structuredAttributes")
+    original_snippet: Optional[str] = Field(None, description="合同原文片段", alias="originalSnippet")
+
+
+class ServicePlanRecommendationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    clauses: List[ServiceClauseForMatching] = Field(..., description="需要匹配服务计划的合同条款列表")
+    candidates: List[ServicePlanCandidate] = Field(..., description="候选服务计划列表")
+
+
+class ClausePlanRecommendation(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    clause_id: str = Field(..., description="合同条款唯一标识", alias="clauseId")
+    clause_type: str = Field(..., description="合同条款类型", alias="clauseType")
+    recommended_plan_id: Optional[str] = Field(None, description="推荐服务计划ID，如无合适推荐则为null", alias="recommendedPlanId")
+    recommended_plan_name: Optional[str] = Field(None, description="推荐服务计划名称", alias="recommendedPlanName")
+    rationale: str = Field(..., description="匹配理由与判断依据，限制在30字以内", max_length=60)
+    alternative_plan_ids: List[str] = Field(default_factory=list, description="备选计划ID列表", alias="alternativePlanIds")
+    alternative_plan_names: List[str] = Field(default_factory=list, description="备选计划名称列表", alias="alternativePlanNames")
+
+
+class ServicePlanRecommendationLLMOutput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    summary: str = Field(..., description="整体推荐结果总结")
+    overall_plan_id: Optional[str] = Field(None, description="整体推荐的服务计划ID", alias="overallPlanId")
+    overall_plan_name: Optional[str] = Field(None, description="整体推荐的服务计划名称", alias="overallPlanName")
+    overall_adjustment_notes: Optional[str] = Field(
+        None,
+        description="若需在标准计划基础上做额外调整，请在此说明",
+        alias="overallAdjustmentNotes",
+    )
+    matches: List[ClausePlanRecommendation] = Field(..., description="逐条款的推荐结果")
 
 
 #### Contract Meta ####

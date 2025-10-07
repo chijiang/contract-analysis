@@ -1,9 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
+import { defaultServicePlanSeeds } from "@/lib/default-service-plans"
 import { SerializedServicePlan, buildPlanCreateData, servicePlanDetailInclude, servicePlanPayloadSchema, serializeServicePlan } from "@/lib/service-plans"
 
+const seedDefaultPlansIfNeeded = async () => {
+  const count = await prisma.servicePlan.count()
+  if (count > 0) return
+
+  await prisma.$transaction(async (tx) => {
+    for (const plan of defaultServicePlanSeeds) {
+      await tx.servicePlan.create({
+        data: buildPlanCreateData(plan),
+      })
+    }
+  })
+}
+
 export async function GET(): Promise<NextResponse<SerializedServicePlan[]>> {
+  await seedDefaultPlansIfNeeded()
+
   const plans = await prisma.servicePlan.findMany({
     orderBy: { createdAt: "desc" },
     include: servicePlanDetailInclude,

@@ -155,7 +155,7 @@ export function StandardTermsManagement() {
       }
     } catch (error) {
       setTemplatesStatus("error")
-      setTemplatesError(error instanceof Error ? error.message : "加载产品合同模板失败")
+      setTemplatesError(error instanceof Error ? error.message : "加载审核模板失败")
     }
   }, [])
 
@@ -208,7 +208,7 @@ export function StandardTermsManagement() {
   useEffect(() => {
     loadTemplates().catch(() => {
       setTemplatesStatus("error")
-      setTemplatesError("加载产品合同模板失败")
+      setTemplatesError("加载审核模板失败")
     })
   }, [loadTemplates])
 
@@ -289,7 +289,7 @@ export function StandardTermsManagement() {
   const handleAddClauseSubmit = useCallback(async () => {
     if (!selectedTemplateId) {
       setAddFormStatus("error")
-      setAddFormError("请先选择产品合同模板")
+      setAddFormError("请先选择审核模板")
       return
     }
 
@@ -443,7 +443,7 @@ export function StandardTermsManagement() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        throw new Error(payload?.message ?? "创建产品合同模板失败")
+        throw new Error(payload?.message ?? "创建审核模板失败")
       }
 
       const template = (await response.json()) as ContractTemplate
@@ -454,7 +454,7 @@ export function StandardTermsManagement() {
       setSelectedTemplateId(template.id)
     } catch (error) {
       setCreateTemplateStatus("error")
-      setCreateTemplateError(error instanceof Error ? error.message : "创建产品合同模板失败")
+      setCreateTemplateError(error instanceof Error ? error.message : "创建审核模板失败")
     }
   }, [createTemplateForm, loadTemplates])
 
@@ -466,7 +466,7 @@ export function StandardTermsManagement() {
 
       if (!selectedTemplateId) {
         setImportStatus("error")
-        setImportMessage("请先选择产品合同模板")
+        setImportMessage("请先选择审核模板")
         return
       }
 
@@ -507,7 +507,7 @@ export function StandardTermsManagement() {
     setExportError(null)
     try {
       if (!selectedTemplateId) {
-        throw new Error("请先选择产品合同模板")
+        throw new Error("请先选择审核模板")
       }
 
       const response = await fetch(`/api/standard-clauses/export?templateId=${encodeURIComponent(selectedTemplateId)}`)
@@ -831,7 +831,7 @@ export function StandardTermsManagement() {
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>新建产品合同模板</DialogTitle>
+            <DialogTitle>新建审核模板</DialogTitle>
             <DialogDescription>创建后可在模板列表中选择并维护专属条款。</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -881,12 +881,12 @@ export function StandardTermsManagement() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <FileSpreadsheet className="h-5 w-5" />标准条款知识库
+                  <FileSpreadsheet className="h-5 w-5" />审核标准知识库
                 </CardTitle>
                 <CardDescription>导入真实条款库或下载模板，支持批量维护</CardDescription>
               </div>
               <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
-                <Label className="text-xs text-muted-foreground">产品合同模板</Label>
+                <Label className="text-xs text-muted-foreground">审核模板</Label>
                 <Select
                   value={selectedTemplateId ?? undefined}
                   onValueChange={(value) => setSelectedTemplateId(value)}
@@ -899,7 +899,7 @@ export function StandardTermsManagement() {
                           ? "加载模板..."
                           : templates.length === 0
                             ? "暂无可用模板"
-                            : "选择产品合同模板"
+                            : "选择审核模板"
                       }
                     />
                   </SelectTrigger>
@@ -1041,13 +1041,13 @@ export function StandardTermsManagement() {
 
             <CardContent className="p-0">
               {templatesStatus === "loading" && (
-                <div className="py-12 text-center text-sm text-muted-foreground">正在加载产品合同模板...</div>
+                <div className="py-12 text-center text-sm text-muted-foreground">正在加载审核模板...</div>
               )}
               {templatesStatus === "success" && templates.length === 0 && (
-                <div className="py-12 text-center text-sm text-muted-foreground">暂无可用的产品合同模板，请先创建。</div>
+                <div className="py-12 text-center text-sm text-muted-foreground">暂无可用的审核模板，请先创建。</div>
               )}
               {templatesStatus === "success" && templates.length > 0 && !selectedTemplateId && (
-                <div className="py-12 text-center text-sm text-muted-foreground">请选择上方的产品合同模板以查看标准条款。</div>
+                <div className="py-12 text-center text-sm text-muted-foreground">请选择上方的审核模板以查看标准条款。</div>
               )}
               {templatesStatus === "success" && selectedTemplateId && (
                 <>

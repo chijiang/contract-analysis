@@ -7,7 +7,7 @@ export default function HomePage() {
       <Navigation />
       <main className="container mx-auto py-6">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight text-balance">合同审核</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-balance">合同分析</h1>
           <p className="text-muted-foreground text-pretty">上传PDF合同文件，进行智能条款分析和风险评估</p>
         </div>
         <ContractDashboard />

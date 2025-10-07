@@ -9,12 +9,12 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const selection = await resolveTemplateSelection(url.searchParams.getAll("templateId"))
   if (!selection) {
-    return NextResponse.json({ message: "未找到对应的产品合同模板" }, { status: 404 })
+    return NextResponse.json({ message: "未找到对应的审核模板" }, { status: 404 })
   }
 
   const { templateIds, templates } = selection
   if (templateIds.length !== 1) {
-    return NextResponse.json({ message: "导出操作仅支持单个产品合同模板" }, { status: 400 })
+    return NextResponse.json({ message: "导出操作仅支持单个审核模板" }, { status: 400 })
   }
 
   const template = templates[0]

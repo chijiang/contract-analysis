@@ -8,9 +8,9 @@ import { createProcessingLog } from "@/lib/processing-logs"
 import type { ContractAnalysis as ContractAnalysisModel, ContractTemplate as ContractTemplateModel } from "@prisma/client"
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     contractId: string
-  }
+  }>
 }
 
 const getRemoteApiUrl = () => {
@@ -204,7 +204,7 @@ const loadStandardClausesForTemplate = async (template: ContractTemplateModel) =
 }
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
-  const { contractId } = params
+  const { contractId } = await params
 
   if (!contractId) {
     return NextResponse.json({ message: "缺少合同ID" }, { status: 400 })
@@ -232,7 +232,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 }
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
-  const { contractId } = params
+  const { contractId } = await params
 
   if (!contractId) {
     return NextResponse.json({ message: "缺少合同ID" }, { status: 400 })
@@ -284,11 +284,11 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   if (templateIds.length === 0) {
     await createProcessingLog({
       ...baseLogPayload,
-      description: "未选择产品合同模板",
+      description: "未选择审核模板",
       source: "DATABASE",
       status: "ERROR",
     })
-    return NextResponse.json({ message: "请至少提供一个产品合同模板" }, { status: 400 })
+    return NextResponse.json({ message: "请至少提供一个审核模板" }, { status: 400 })
   }
 
   const contract = await prisma.contract.findUnique({ where: { id: contractId } })
@@ -306,12 +306,12 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   if (!selection) {
     await createProcessingLog({
       ...baseLogPayload,
-      description: "选择的产品合同模板无效",
+      description: "选择的审核模板无效",
       source: "DATABASE",
       status: "ERROR",
       metadata: { templateIds },
     })
-    return NextResponse.json({ message: "选择的产品合同模板无效" }, { status: 400 })
+    return NextResponse.json({ message: "选择的审核模板无效" }, { status: 400 })
   }
 
   const requestedTemplateIds = selection.templateIds
@@ -503,6 +503,23 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
         })),
       },
     })
+
+    // 更新合同处理状态为完成（如果当前处于失败状态）
+    const currentContract = await prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { processingStatus: true },
+    })
+    
+    if (currentContract?.processingStatus === "FAILED" || currentContract?.processingStatus === "PROCESSING_ANALYSIS") {
+      await prisma.contract.update({
+        where: { id: contractId },
+        data: { 
+          processingStatus: "COMPLETED",
+          processingError: null,
+          updatedAt: new Date(),
+        },
+      })
+    }
 
     return NextResponse.json({ source: "fresh", analysis: serializeAnalysis(savedAnalysis) })
   } catch (error) {

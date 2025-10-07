@@ -13,6 +13,13 @@ import {
   type YearlyMaintenanceItem,
   createEmptyServiceInfoSnapshot,
 } from "@/app/types/service-info"
+import type { ClausePlanRecommendation, ServicePlanRecommendationResult } from "@/app/types/service-plan-recommendation"
+import {
+  shouldAutoRecommend,
+  buildClauseInputs,
+  fetchServicePlanCandidates,
+  requestServicePlanRecommendation,
+} from "./service-plan-recommendation"
 
 const toNullableString = (value: unknown) => {
   if (typeof value !== "string") return null
@@ -51,6 +58,60 @@ const toNullableBoolean = (value: unknown) => {
 const toStringArray = (value: unknown) => {
   if (!Array.isArray(value)) return [] as string[]
   return value.map((entry) => toNullableString(entry)).filter((entry): entry is string => Boolean(entry))
+}
+
+const pickValue = (record: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    if (key in record) {
+      return record[key]
+    }
+  }
+  return undefined
+}
+
+const toStringOrEmpty = (value: unknown) => {
+  if (typeof value === "string") return value.trim()
+  if (value === null || value === undefined) return ""
+  return String(value)
+}
+
+const normalizeServicePlanRecommendation = (value: unknown): ServicePlanRecommendationResult | null => {
+  if (!value || typeof value !== "object") return null
+  const record = value as Record<string, unknown>
+  const matchesRaw = Array.isArray(pickValue(record, ["matches"])) ? (pickValue(record, ["matches"]) as unknown[]) : []
+
+  const matches: ClausePlanRecommendation[] = matchesRaw
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
+    .map((entry, index) => {
+      const clauseId =
+        toNullableString(pickValue(entry, ["clauseId", "clause_id"])) ?? `clause-${index + 1}`
+      const clauseType =
+        toNullableString(pickValue(entry, ["clauseType", "clause_type"])) ?? "unknown"
+      const recommendedPlanId = toNullableString(pickValue(entry, ["recommendedPlanId", "recommended_plan_id"]))
+      const recommendedPlanName = toNullableString(pickValue(entry, ["recommendedPlanName", "recommended_plan_name"]))
+      const rationale = toStringOrEmpty(pickValue(entry, ["rationale"]))
+      const alternativePlanIds = toStringArray(pickValue(entry, ["alternativePlanIds", "alternative_plan_ids"]))
+      const alternativePlanNames = toStringArray(pickValue(entry, ["alternativePlanNames", "alternative_plan_names"]))
+
+      return {
+        clauseId,
+        clauseType,
+        recommendedPlanId: recommendedPlanId ?? null,
+        recommendedPlanName: recommendedPlanName ?? null,
+        rationale,
+        alternativePlanIds,
+        alternativePlanNames,
+      }
+    })
+
+  return {
+    summary: toStringOrEmpty(pickValue(record, ["summary"])),
+    overallPlanId: toNullableString(pickValue(record, ["overallPlanId", "overall_plan_id"])) ?? null,
+    overallPlanName: toNullableString(pickValue(record, ["overallPlanName", "overall_plan_name"])) ?? null,
+    overallAdjustmentNotes:
+      toNullableString(pickValue(record, ["overallAdjustmentNotes", "overall_adjustment_notes"])) ?? null,
+    matches,
+  }
 }
 
 const buildServiceInfoUrl = (path: string) => {
@@ -93,6 +154,7 @@ export const parseServiceInfoSnapshotPayload = (payload: string | null | undefin
       keySpareParts: Array.isArray(parsed?.keySpareParts) ? parsed.keySpareParts : [],
       contractCompliance: parsed?.contractCompliance ?? null,
       afterSalesSupport: parsed?.afterSalesSupport ?? null,
+      servicePlanRecommendation: normalizeServicePlanRecommendation(parsed?.servicePlanRecommendation),
     }
   } catch (error) {
     console.warn("Failed to parse service info snapshot", error)
@@ -133,6 +195,7 @@ const extractDeviceList = (value: unknown): DeviceInfo[] => {
 export async function extractAndPersistServiceInfo(contractId: string, markdown: string, options: ExtractOptions = {}) {
   const { suppressErrors = true } = options
   const existingSnapshot = await prisma.contractServiceInfoSnapshot.findUnique({ where: { contractId } })
+  const previousSnapshot = existingSnapshot ? parseServiceInfoSnapshotPayload(existingSnapshot.payload) : null
   const baseLog = { contractId, source: "AI" as const, action: "SERVICE_INFO_EXTRACTION" as const }
   const startedAt = Date.now()
 
@@ -143,9 +206,7 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
       description: "缺少Markdown内容，跳过服务信息提取",
       durationMs: Date.now() - startedAt,
     })
-    return existingSnapshot
-      ? parseServiceInfoSnapshotPayload(existingSnapshot.payload)
-      : createEmptyServiceInfoSnapshot()
+    return previousSnapshot ?? createEmptyServiceInfoSnapshot()
   }
 
   try {
@@ -284,7 +345,7 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
         }))
       : []
 
-    const snapshot: ServiceInfoSnapshotPayload = {
+    const baseSnapshot: ServiceInfoSnapshotPayload = {
       onsiteSla,
       yearlyMaintenance,
       remoteMaintenance,
@@ -292,6 +353,30 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
       contractCompliance,
       afterSalesSupport,
       keySpareParts,
+      servicePlanRecommendation: previousSnapshot?.servicePlanRecommendation ?? null,
+    }
+
+    let recommendation = baseSnapshot.servicePlanRecommendation
+    let autoRecommendationTriggered = false
+
+    if (shouldAutoRecommend(baseSnapshot)) {
+      try {
+        const clauses = buildClauseInputs(baseSnapshot)
+        if (clauses.length) {
+          const candidates = await fetchServicePlanCandidates()
+          if (candidates.length) {
+            recommendation = await requestServicePlanRecommendation(clauses, candidates)
+            autoRecommendationTriggered = true
+          }
+        }
+      } catch (recommendationError) {
+        console.warn(`Auto service plan recommendation failed for contract ${contractId}`, recommendationError)
+      }
+    }
+
+    const snapshot: ServiceInfoSnapshotPayload = {
+      ...baseSnapshot,
+      servicePlanRecommendation: recommendation,
     }
 
     const persisted = await prisma.contractServiceInfoSnapshot.upsert({
@@ -321,6 +406,11 @@ export async function extractAndPersistServiceInfo(contractId: string, markdown:
           remoteMaintenance: remoteMaintenance.length,
           trainingSupports: trainingSupports.length,
           keySparePartBlocks: keySpareParts.length,
+        },
+        servicePlanRecommendation: {
+          autoTriggered: autoRecommendationTriggered,
+          overallPlanId: recommendation?.overallPlanId ?? null,
+          overallPlanName: recommendation?.overallPlanName ?? null,
         },
       },
     })

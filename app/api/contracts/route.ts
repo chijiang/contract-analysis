@@ -84,6 +84,8 @@ export async function POST(req: NextRequest) {
         markdown,
         convertedAt: new Date(),
         updatedAt: new Date(),
+        processingStatus: "PROCESSING_BASIC_INFO",
+        processingError: null,
       },
       create: {
         // 创建新记录
@@ -96,9 +98,11 @@ export async function POST(req: NextRequest) {
         s3Key: storageProvider === "S3" ? saveResult.filePath : null,
         markdown,
         convertedAt: new Date(),
+        processingStatus: "PROCESSING_BASIC_INFO",
       },
     })
 
+    // 提取基础信息（这个操作相对较快）
     const basicInfo = await extractAndPersistBasicInfo(contract.id, markdown)
 
     await createProcessingLog({

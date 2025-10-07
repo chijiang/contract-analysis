@@ -1,3 +1,5 @@
+import type { ServicePlanRecommendationResult } from "./service-plan-recommendation"
+
 export type DeviceInfo = {
   deviceName: string | null
   registrationNumber: string | null
@@ -115,6 +117,7 @@ export type ServiceInfoSnapshotPayload = {
   contractCompliance: ContractComplianceItem | null
   afterSalesSupport: AfterSalesSupportItem | null
   keySpareParts: KeySparePartItem[]
+  servicePlanRecommendation: ServicePlanRecommendationResult | null
 }
 
 export const createEmptyServiceInfoSnapshot = (): ServiceInfoSnapshotPayload => ({
@@ -125,6 +128,7 @@ export const createEmptyServiceInfoSnapshot = (): ServiceInfoSnapshotPayload => 
   contractCompliance: null,
   afterSalesSupport: null,
   keySpareParts: [],
+  servicePlanRecommendation: null,
 })
 
 export const DEFAULT_SERVICE_INFO_SNAPSHOT: ServiceInfoSnapshotPayload = createEmptyServiceInfoSnapshot()

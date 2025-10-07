@@ -334,7 +334,7 @@ export function ServicePlansManagement() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
-            <CardTitle className="text-xl">标准服务计划</CardTitle>
+            <CardTitle className="text-xl">Service Plans</CardTitle>
             <CardDescription>维护与合同条款同构的标准服务条款，便于匹配合适的合同模版。</CardDescription>
           </div>
           <div className="flex items-center gap-2">

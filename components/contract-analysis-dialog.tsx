@@ -31,7 +31,7 @@ export function ContractAnalysisDialog({
     handleTemplateDialogConfirm,
 }: ContractAnalysisDialogProps) {
 
-    const templateDialogTitle = pendingAnalysisAction === "reprocess" ? "重新处理前选择模板" : "选择产品合同模板"
+    const templateDialogTitle = pendingAnalysisAction === "reprocess" ? "重新处理前选择模板" : "选择审核模板"
     const templateDialogDescription =
         pendingAnalysisAction === "reprocess"
             ? "选择本次重新处理需要启用的标准条款模板。"
@@ -102,7 +102,7 @@ export function ContractAnalysisDialog({
                         )
                     })}
                     {templatesStatus === "success" && templates.length === 0 && (
-                        <p className="text-sm text-muted-foreground">暂无可用模板，请先在标准条款管理页面创建。</p>
+                        <p className="text-sm text-muted-foreground">暂无可用模板，请先在审核标准管理页面创建。</p>
                     )}
                 </div>
                 {templateDialogError && <p className="text-sm text-destructive">{templateDialogError}</p>}

@@ -20,7 +20,6 @@ class NonStandardDetectionRequest(BaseModel):
 class Compliance(str, Enum):
     COMPLETELY_CONFORM = "符合标准"
     NOT_CONFORM = "不符合标准"
-    # NOT_INVOLVED = "标准中未涉及"
 
 class RiskLevel(str, Enum):
     HIGH = "高"

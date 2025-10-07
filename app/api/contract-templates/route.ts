@@ -78,6 +78,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(template, { status: 201 })
   } catch (error) {
     console.error("Failed to create contract template", error)
-    return NextResponse.json({ message: "创建产品合同模板失败" }, { status: 500 })
+    return NextResponse.json({ message: "创建审核模板失败" }, { status: 500 })
   }
 }

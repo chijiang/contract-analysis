@@ -4,13 +4,13 @@ import { prisma } from "@/lib/prisma"
 import { extractAndPersistBasicInfo } from "../../_helpers/basic-info"
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     contractId: string
-  }
+  }>
 }
 
 export async function POST(_req: NextRequest, { params }: RouteContext) {
-  const { contractId } = params
+  const { contractId } = await params
 
   if (!contractId) {
     return NextResponse.json({ message: "缺少合同ID" }, { status: 400 })

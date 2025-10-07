@@ -13,12 +13,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (typeof templateId !== "string" || !templateId.trim()) {
-    return NextResponse.json({ message: "缺少产品合同模板信息" }, { status: 400 })
+    return NextResponse.json({ message: "缺少审核模板信息" }, { status: 400 })
   }
 
   const template = await prisma.contractTemplate.findUnique({ where: { id: templateId } })
   if (!template) {
-    return NextResponse.json({ message: "产品合同模板不存在" }, { status: 404 })
+    return NextResponse.json({ message: "审核模板不存在" }, { status: 404 })
   }
 
   try {

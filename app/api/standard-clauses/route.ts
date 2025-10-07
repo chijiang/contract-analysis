@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   const selection = await resolveTemplateSelection(url.searchParams.getAll("templateId"))
   if (!selection) {
-    return NextResponse.json({ message: "未找到对应的产品合同模板" }, { status: 404 })
+    return NextResponse.json({ message: "未找到对应的审核模板" }, { status: 404 })
   }
   const { templateIds, templates } = selection
 
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
   const template = await prisma.contractTemplate.findUnique({ where: { id: normalizedTemplateId } })
   if (!template) {
-    return NextResponse.json({ message: "产品合同模板不存在" }, { status: 404 })
+    return NextResponse.json({ message: "审核模板不存在" }, { status: 404 })
   }
 
   try {

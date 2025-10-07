@@ -134,7 +134,7 @@ export function ContractClausesList(
                 )}
                 {templatesStatus === "success" && templates.length === 0 && (
                     <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                        暂无可用的产品合同模板，请先在标准条款管理页面创建后再试。
+                        暂无可用的审核模板，请先在审核标准管理页面创建后再试。
                     </div>
                 )}
                 {analysisStatus === "loading" ? (
