@@ -7,8 +7,8 @@ import { Suspense } from "react"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "合同审核管理系统",
-  description: "专业的合同审核和管理工具",
+  title: "合同分析管理系统",
+  description: "GE的合同分析和管理工具",
   generator: "v0.app",
 }
 

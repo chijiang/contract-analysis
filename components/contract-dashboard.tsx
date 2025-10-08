@@ -825,7 +825,7 @@ export function ContractDashboard() {
               )}
               <div className="overflow-x-auto">
                 <Table>
-                  <TableCaption>最近一次处理时间越新的合同会排在前面。</TableCaption>
+                  {/* <TableCaption>最近一次处理时间越新的合同会排在前面。</TableCaption> */}
                   <TableHeader>
                     <TableRow>
                       {isExportMode && (

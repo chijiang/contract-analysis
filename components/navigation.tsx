@@ -16,7 +16,7 @@ const navigation = [
     description: "PDF合同预览和条款分析",
   },
   {
-    name: "Service Plan管理",
+    name: "服务计划管理",
     href: "/service-plans",
     icon: Layers,
     description: "维护服务组合与条款配置",
@@ -51,7 +51,7 @@ export function Navigation() {
         <div className="mr-4 hidden md:flex">
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <Scale className="h-6 w-6 text-primary" />
-            <span className="hidden font-bold sm:inline-block">合同审核管理系统</span>
+            <span className="hidden font-bold sm:inline-block">合同分析管理系统</span>
           </Link>
           <nav className="flex items-center space-x-6 text-sm font-medium">
             {navigation.map((item) => (
@@ -81,7 +81,7 @@ export function Navigation() {
           <SheetContent side="left" className="pr-0">
             <Link href="/" className="flex items-center space-x-2" onClick={() => setIsOpen(false)}>
               <Scale className="h-6 w-6 text-primary" />
-              <span className="font-bold">合同审核管理系统</span>
+              <span className="font-bold">合同分析管理系统</span>
             </Link>
             <div className="my-4 h-[calc(100vh-8rem)] pb-10 pl-6">
               <div className="flex flex-col space-y-3">
