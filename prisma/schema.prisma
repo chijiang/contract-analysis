@@ -303,3 +303,51 @@ model ServicePlanClause {
   @@index([planId])
   @@index([planId, orderIndex])
 }
+
+// 用户角色模型
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // admin, user
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+  permissions URLPermission[]
+
+  @@index([name])
+}
+
+// 用户模型
+model User {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  passwordHash  String
+  roleId        String
+  isPasswordChanged Boolean @default(false) // 是否已修改过默认密码
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@index([username])
+  @@index([roleId])
+  @@index([isActive])
+}
+
+// URL权限模型
+model URLPermission {
+  id          String   @id @default(cuid())
+  urlPattern  String   // URL 模式，支持通配符，如 /contracts/*, /admin/*
+  roleId      String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([urlPattern, roleId])
+  @@index([roleId])
+  @@index([urlPattern])
+}
