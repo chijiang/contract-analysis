@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
     if (snapshot) {
       snapshot.onsiteSla.forEach((item) => {
         const parts: string[] = []
-        if (item.serviceType) parts.push(`服务类型：${item.serviceType}`)
+        if (item.serviceType) parts.push(`服务计划：${item.serviceType}`)
         if (typeof item.responseTimeHours === "number") parts.push(`响应 ${item.responseTimeHours} 小时`)
         if (typeof item.onSiteTimeHours === "number") parts.push(`到场 ${item.onSiteTimeHours} 小时`)
         if (item.coverage) parts.push(`覆盖：${item.coverage}`)
@@ -469,7 +469,7 @@ export async function POST(req: NextRequest) {
   const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" }) as Buffer
   const filename = `contract-analysis-export-${exportedAt.replace(/[-:]/g, "").split(".")[0]}.xlsx`
 
-  return new Response(buffer, {
+  return new Response(new Uint8Array(buffer), {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

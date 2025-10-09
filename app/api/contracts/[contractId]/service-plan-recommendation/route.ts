@@ -31,7 +31,7 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
 
   if (!clauses.length) {
     const result: ServicePlanRecommendationResult = {
-      summary: "合同条款均已标注服务类型，未触发推荐逻辑。",
+      summary: "合同条款均已标注服务计划，未触发推荐逻辑。",
       overallPlanId: snapshot.servicePlanRecommendation?.overallPlanId ?? null,
       overallPlanName: snapshot.servicePlanRecommendation?.overallPlanName ?? null,
       overallAdjustmentNotes: snapshot.servicePlanRecommendation?.overallAdjustmentNotes ?? null,

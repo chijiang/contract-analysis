@@ -150,7 +150,7 @@ class ContractInfoExtractionAgent:
     async def extract_response_arrival_info(self, contract_content: str):
         response = await self.llm.ainvoke([
             ("system", self.general_service_info_prompt),
-            ("system", f"请分析并拆解合同中关于设备保修SLA相关的信息，输出格式: {self.response_arrival_output_parser.get_format_instructions()}"),
+            ("system", f"请分析并拆解合同中关于设备保修SLA相关的信息，**注意不要将单个保修服务拆分成多个，一个设备往往只有一个保修服务**。\n输出格式: {self.response_arrival_output_parser.get_format_instructions()}"),
             ("user", contract_content)
         ])
         ouput_text = response.content.strip().replace("```json", "").replace("```", "")

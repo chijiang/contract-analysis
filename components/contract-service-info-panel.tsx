@@ -164,7 +164,7 @@ const OnsiteSlaSection = ({ items, onLocateText }: { items: OnsiteSlaItem[]; onL
           <div key={`onsite-${index}`} className="space-y-3 rounded-md border border-border/60 p-3">
               <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-muted-foreground shrink-0">服务类型</span>
+                  <span className="font-medium text-muted-foreground shrink-0">服务计划</span>
                   <span className="rounded-md bg-primary/5 px-2 py-1 text-sm font-medium text-primary">
                     {item.serviceType ? item.serviceType : "未明确"}
                   </span>
@@ -206,7 +206,7 @@ const YearlyMaintenanceSection = ({ items, onLocateText }: { items: YearlyMainte
           <div key={`yearly-${index}`} className="space-y-3 rounded-md border border-border/60 p-3">
             <div className="mb-3">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-medium text-muted-foreground min-w-[4rem]">服务类型</span>
+                <span className="text-sm font-medium text-muted-foreground min-w-[4rem]">服务计划</span>
                 <span className="rounded-md bg-primary/5 px-2 py-1 text-sm font-medium text-primary">
                   {item.serviceType ?? "未明确"}
                 </span>
@@ -279,7 +279,7 @@ const RemoteMaintenanceSection = ({ items, onLocateText }: { items: RemoteMainte
             <div key={`remote-${index}`} className="space-y-3 rounded-md border border-border/60 p-3">
               <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 lg:grid-cols-3">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-muted-foreground shrink-0">服务类型</span>
+                  <span className="font-medium text-muted-foreground shrink-0">服务计划</span>
                   <span className="rounded-md bg-primary/5 px-2 py-1 text-sm font-medium text-primary">
                     {item.serviceType ?? "未明确"}
                   </span>
@@ -339,7 +339,7 @@ const TrainingSupportSection = ({ items, onLocateText }: { items: TrainingSuppor
             </div>
             <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 lg:grid-cols-3">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-muted-foreground shrink-0">服务类型</span>
+                <span className="font-medium text-muted-foreground shrink-0">服务计划</span>
                 <span className="text-sm">{item.serviceType ?? "—"}</span>
               </div>
               <div className="flex items-center gap-2">
@@ -394,7 +394,7 @@ const KeySparePartsSection = ({ items, onLocateText }: { items: KeySparePartItem
           <div key={`spare-${index}`} className="space-y-3 rounded-md border border-border/60 p-3">
             <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 lg:grid-cols-3">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-muted-foreground shrink-0">服务类型</span>
+                <span className="font-medium text-muted-foreground shrink-0">服务计划</span>
                 <span className="text-sm">{item.serviceType ?? "—"}</span>
               </div>
               <div className="flex items-center gap-2">
@@ -648,7 +648,7 @@ export function ContractServiceInfoPanel({
   const recommendButtonTitle = !hasContract
     ? "请先上传合同"
     : !hasAmbiguousClauses
-      ? "条款已包含服务类型，可直接参考下方结果"
+      ? "条款已包含服务计划，可直接参考下方结果"
       : undefined
   const recommendButtonLabel =
     recommendationState === "loading"
@@ -788,7 +788,7 @@ export function ContractServiceInfoPanel({
                     ]
                       .filter(Boolean)
                       .join(" / ") || "—"}）。`
-                  : `检测到 ${ambiguousCounts.total} 条条款缺少服务类型，包含：${[
+                  : `检测到 ${ambiguousCounts.total} 条条款缺少服务计划，包含：${[
                       ambiguousCounts.onsite ? `现场SLA ${ambiguousCounts.onsite}` : null,
                       ambiguousCounts.yearly ? `年度保养 ${ambiguousCounts.yearly}` : null,
                       ambiguousCounts.remote ? `远程维护 ${ambiguousCounts.remote}` : null,
@@ -797,7 +797,7 @@ export function ContractServiceInfoPanel({
                     ]
                       .filter(Boolean)
                       .join(" / ") || "—"}。`
-                : "当前条款均已附带服务类型，可直接查看下方明细。"}
+                : "当前条款均已附带服务计划，可直接查看下方明细。"}
             </p>
           )}
         </div>

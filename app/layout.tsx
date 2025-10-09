@@ -8,7 +8,7 @@ import "./globals.css"
 
 export const metadata: Metadata = {
   title: "合同分析管理系统",
-  description: "GE的合同分析和管理工具",
+  description: "GE合同分析和管理工具",
   generator: "v0.app",
 }
 

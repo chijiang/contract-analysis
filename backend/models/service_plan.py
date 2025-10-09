@@ -36,14 +36,14 @@ class ResponseArrivalParams(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
     service_type: Optional[str] = Field(None, description="合同类型，如明确标注则返回（如：智享保A），否则返回null")
-    response_time_hours: float = Field(..., description="报修响应时间（小时）")
-    on_site_time_hours: float = Field(..., description="到场时间（小时）")
+    response_time_hours: Optional[float] = Field(..., description="报修在线响应时间（小时）")
+    on_site_time_hours: Optional[float] = Field(..., description="到场时间（小时）")
     coverage: str = Field("24x7", description="服务覆盖时段", example="周一至周五8:30至17:30, 国家法定假日除外")
     original_contract_snippet: str = Field(..., description="原始合同片段，原文摘录一定要与原文保持一致，不要做任何修改，也**不得对标点符号、空格或格式做任何修改**。")
-    devices_info: List[DeviceInfoModel] = Field(..., description="所有符合该到场维修服务SLA的设备信息列表")
+    devices_info: List[DeviceInfoModel] = Field(..., description="所有符合该维修服务SLA的设备信息列表")
 
 class ResponseArrivalLLMOutput(BaseModel):
-    item_list: List[ResponseArrivalParams] = Field(..., description="到场维修服务SLA参数列表")
+    item_list: List[ResponseArrivalParams] = Field(..., description="维修服务SLA参数列表")
 
 class ResponseArrivalBlock(BaseModel):
     """SLA 服务块（单实例）：是否包含 + 参数"""

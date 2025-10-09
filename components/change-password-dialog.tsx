@@ -287,3 +287,4 @@ export function ChangePasswordDialog({ open, onOpenChange, isFirstLogin = false 
     </Dialog>
   )
 }
+

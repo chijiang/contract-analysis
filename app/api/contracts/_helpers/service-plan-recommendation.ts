@@ -54,209 +54,214 @@ const hasExplicitServiceType = (value: string | null | undefined) => Boolean(tri
 
 const buildOnsiteClauses = (
   items: ServiceInfoSnapshotPayload["onsiteSla"],
-): ClauseInputPayload[] =>
-  items
-    .map((item, index) => {
-      if (hasExplicitServiceType(item.serviceType)) return null
-      const deviceNames = item.devices.map((device) => device.deviceName).filter(Boolean)
-      const parts: string[] = [
-        item.responseTimeHours !== null && item.responseTimeHours !== undefined
-          ? `报修响应 ${item.responseTimeHours} 小时`
-          : "报修响应时间未提供",
-        item.onSiteTimeHours !== null && item.onSiteTimeHours !== undefined
-          ? `现场到场 ${item.onSiteTimeHours} 小时`
-          : "现场到场时间未提供",
-        item.coverage ? `覆盖时段 ${item.coverage}` : "服务覆盖时段未说明",
-      ]
-      if (deviceNames.length) {
-        parts.push(`适用设备：${formatList(deviceNames as string[])}`)
-      }
-      return {
-        clauseId: `onsite-${index}`,
-        clauseType: "onsite_sla",
-        clauseText: parts.join("；"),
-        structuredAttributes: {
-          "响应时间(小时)": formatNumber(item.responseTimeHours) ?? "未提供",
-          "到场时间(小时)": formatNumber(item.onSiteTimeHours) ?? "未提供",
-          覆盖时段: item.coverage ?? "未说明",
-          ...(deviceNames.length ? { 适用设备: formatList(deviceNames as string[]) } : {}),
-        },
-        originalSnippet: truncateSnippet(item.originalContractSnippet),
-      }
+): ClauseInputPayload[] => {
+  const clauses: ClauseInputPayload[] = []
+  items.forEach((item, index) => {
+    if (hasExplicitServiceType(item.serviceType)) return
+    const deviceNames = item.devices.map((device) => device.deviceName).filter(Boolean)
+    const parts: string[] = [
+      item.responseTimeHours !== null && item.responseTimeHours !== undefined
+        ? `报修响应 ${item.responseTimeHours} 小时`
+        : "报修响应时间未提供",
+      item.onSiteTimeHours !== null && item.onSiteTimeHours !== undefined
+        ? `现场到场 ${item.onSiteTimeHours} 小时`
+        : "现场到场时间未提供",
+      item.coverage ? `覆盖时段 ${item.coverage}` : "服务覆盖时段未说明",
+    ]
+    if (deviceNames.length) {
+      parts.push(`适用设备：${formatList(deviceNames as string[])}`)
+    }
+    clauses.push({
+      clauseId: `onsite-${index}`,
+      clauseType: "onsite_sla" as ServicePlanClauseType,
+      clauseText: parts.join("；"),
+      structuredAttributes: {
+        "响应时间(小时)": formatNumber(item.responseTimeHours) ?? "未提供",
+        "到场时间(小时)": formatNumber(item.onSiteTimeHours) ?? "未提供",
+        覆盖时段: item.coverage ?? "未说明",
+        ...(deviceNames.length ? { 适用设备: formatList(deviceNames as string[]) } : {}),
+      },
+      originalSnippet: truncateSnippet(item.originalContractSnippet),
     })
-    .filter((entry): entry is ClauseInputPayload => Boolean(entry))
+  })
+  return clauses
+}
 
 const buildYearlyClauses = (
   items: ServiceInfoSnapshotPayload["yearlyMaintenance"],
-): ClauseInputPayload[] =>
-  items
-    .map((item, index) => {
-      if (hasExplicitServiceType(item.serviceType)) return null
-      const parts: string[] = [
-        item.standardPmPerYear !== null && item.standardPmPerYear !== undefined
-          ? `标准保养 ${item.standardPmPerYear} 次/年`
-          : "标准保养次数未提供",
-        item.smartPmPerYear !== null && item.smartPmPerYear !== undefined
-          ? `精智保养 ${item.smartPmPerYear} 次/年`
-          : null,
-        item.remotePmPerYear !== null && item.remotePmPerYear !== undefined
-          ? `远程保养 ${item.remotePmPerYear} 次/年`
-          : null,
-        item.scope.length ? `保养范围：${formatList(item.scope)}` : null,
-        item.deliverables ? `交付物：${item.deliverables}` : null,
-        item.scheduling ? `排期要求：${item.scheduling}` : null,
-      ].filter(Boolean) as string[]
-      return {
-        clauseId: `yearly-${index}`,
-        clauseType: "yearly_maintenance",
-        clauseText: parts.join("；"),
-        structuredAttributes: {
-          "标准保养(次/年)": formatNumber(item.standardPmPerYear) ?? "未提供",
-          ...(item.smartPmPerYear !== null && item.smartPmPerYear !== undefined
-            ? { "精智保养(次/年)": formatNumber(item.smartPmPerYear)! }
-            : {}),
-          ...(item.remotePmPerYear !== null && item.remotePmPerYear !== undefined
-            ? { "远程保养(次/年)": formatNumber(item.remotePmPerYear)! }
-            : {}),
-          ...(item.scope.length ? { 保养范围: formatList(item.scope) } : {}),
-          ...(item.deliverables ? { 交付物: item.deliverables } : {}),
-          ...(item.scheduling ? { 排期要求: item.scheduling } : {}),
-        },
-        originalSnippet: truncateSnippet(item.originalContractSnippet),
-      }
+): ClauseInputPayload[] => {
+  const clauses: ClauseInputPayload[] = []
+  items.forEach((item, index) => {
+    if (hasExplicitServiceType(item.serviceType)) return
+    const parts: string[] = [
+      item.standardPmPerYear !== null && item.standardPmPerYear !== undefined
+        ? `标准保养 ${item.standardPmPerYear} 次/年`
+        : "标准保养次数未提供",
+      item.smartPmPerYear !== null && item.smartPmPerYear !== undefined
+        ? `精智保养 ${item.smartPmPerYear} 次/年`
+        : null,
+      item.remotePmPerYear !== null && item.remotePmPerYear !== undefined
+        ? `远程保养 ${item.remotePmPerYear} 次/年`
+        : null,
+      item.scope.length ? `保养范围：${formatList(item.scope)}` : null,
+      item.deliverables ? `交付物：${item.deliverables}` : null,
+      item.scheduling ? `排期要求：${item.scheduling}` : null,
+    ].filter(Boolean) as string[]
+    clauses.push({
+      clauseId: `yearly-${index}`,
+      clauseType: "yearly_maintenance" as ServicePlanClauseType,
+      clauseText: parts.join("；"),
+      structuredAttributes: {
+        "标准保养(次/年)": formatNumber(item.standardPmPerYear) ?? "未提供",
+        ...(item.smartPmPerYear !== null && item.smartPmPerYear !== undefined
+          ? { "精智保养(次/年)": formatNumber(item.smartPmPerYear)! }
+          : {}),
+        ...(item.remotePmPerYear !== null && item.remotePmPerYear !== undefined
+          ? { "远程保养(次/年)": formatNumber(item.remotePmPerYear)! }
+          : {}),
+        ...(item.scope.length ? { 保养范围: formatList(item.scope) } : {}),
+        ...(item.deliverables ? { 交付物: item.deliverables } : {}),
+        ...(item.scheduling ? { 排期要求: item.scheduling } : {}),
+      },
+      originalSnippet: truncateSnippet(item.originalContractSnippet),
     })
-    .filter((entry): entry is ClauseInputPayload => Boolean(entry))
+  })
+  return clauses
+}
 
 const buildRemoteClauses = (
   items: ServiceInfoSnapshotPayload["remoteMaintenance"],
-): ClauseInputPayload[] =>
-  items
-    .map((item, index) => {
-      if (hasExplicitServiceType(item.serviceType)) return null
-      const modalityPairs: Array<[string, number | null]> = [
-        ["CT", item.ctRemotePmPerYear],
-        ["MR", item.mrRemotePmPerYear],
-        ["IGS", item.igsRemotePmPerYear],
-        ["DR", item.drRemotePmPerYear],
-        ["Mammo", item.mammoRemotePmPerYear],
-        ["移动DR", item.mobileDrRemotePmPerYear],
-        ["骨密度", item.boneDensityRemotePmPerYear],
-        ["超声", item.usRemotePmPerYear],
-        ["其他", item.otherRemotePmPerYear],
-      ]
-      const counts = modalityPairs
-        .filter(([, value]) => value !== null && value !== undefined)
-        .map(([label, value]) => `${label} ${value} 次/年`)
-      const parts: string[] = [
-        item.platform ? `远程平台：${item.platform}` : "远程平台未说明",
-        counts.length ? `远程保养配置：${counts.join("；")}` : "未提供远程保养频次",
-        item.prerequisitesMaxUsersPerDevice !== null && item.prerequisitesMaxUsersPerDevice !== undefined
-          ? `每台设备账号上限 ${item.prerequisitesMaxUsersPerDevice}`
-          : null,
-        item.reports.length ? `输出报告：${formatList(item.reports)}` : null,
-      ].filter(Boolean) as string[]
+): ClauseInputPayload[] => {
+  const clauses: ClauseInputPayload[] = []
+  items.forEach((item, index) => {
+    if (hasExplicitServiceType(item.serviceType)) return
+    const modalityPairs: Array<[string, number | null]> = [
+      ["CT", item.ctRemotePmPerYear],
+      ["MR", item.mrRemotePmPerYear],
+      ["IGS", item.igsRemotePmPerYear],
+      ["DR", item.drRemotePmPerYear],
+      ["Mammo", item.mammoRemotePmPerYear],
+      ["移动DR", item.mobileDrRemotePmPerYear],
+      ["骨密度", item.boneDensityRemotePmPerYear],
+      ["超声", item.usRemotePmPerYear],
+      ["其他", item.otherRemotePmPerYear],
+    ]
+    const counts = modalityPairs
+      .filter(([, value]) => value !== null && value !== undefined)
+      .map(([label, value]) => `${label} ${value} 次/年`)
+    const parts: string[] = [
+      item.platform ? `远程平台：${item.platform}` : "远程平台未说明",
+      counts.length ? `远程保养配置：${counts.join("；")}` : "未提供远程保养频次",
+      item.prerequisitesMaxUsersPerDevice !== null && item.prerequisitesMaxUsersPerDevice !== undefined
+        ? `每台设备账号上限 ${item.prerequisitesMaxUsersPerDevice}`
+        : null,
+      item.reports.length ? `输出报告：${formatList(item.reports)}` : null,
+    ].filter(Boolean) as string[]
 
-      const structured: Record<string, string> = {}
-      if (item.platform) structured.平台 = item.platform
-      if (item.prerequisitesMaxUsersPerDevice !== null && item.prerequisitesMaxUsersPerDevice !== undefined) {
-        structured["账号上限"] = `${item.prerequisitesMaxUsersPerDevice}`
-      }
-      if (item.reports.length) structured.报告类型 = formatList(item.reports)
-      modalityPairs.forEach(([label, value]) => {
-        if (value !== null && value !== undefined) {
-          structured[`远程保养-${label}`] = `${value}`
-        }
-      })
-
-      return {
-        clauseId: `remote-${index}`,
-        clauseType: "remote_maintenance",
-        clauseText: parts.join("；"),
-        structuredAttributes: Object.keys(structured).length ? structured : undefined,
-        originalSnippet: truncateSnippet(item.originalContractSnippet),
+    const structured: Record<string, string> = {}
+    if (item.platform) structured.平台 = item.platform
+    if (item.prerequisitesMaxUsersPerDevice !== null && item.prerequisitesMaxUsersPerDevice !== undefined) {
+      structured["账号上限"] = `${item.prerequisitesMaxUsersPerDevice}`
+    }
+    if (item.reports.length) structured.报告类型 = formatList(item.reports)
+    modalityPairs.forEach(([label, value]) => {
+      if (value !== null && value !== undefined) {
+        structured[`远程保养-${label}`] = `${value}`
       }
     })
-    .filter((entry): entry is ClauseInputPayload => Boolean(entry))
+
+    clauses.push({
+      clauseId: `remote-${index}`,
+      clauseType: "remote_maintenance" as ServicePlanClauseType,
+      clauseText: parts.join("；"),
+      structuredAttributes: Object.keys(structured).length ? structured : undefined,
+      originalSnippet: truncateSnippet(item.originalContractSnippet),
+    })
+  })
+  return clauses
+}
 
 const buildTrainingClauses = (
   items: ServiceInfoSnapshotPayload["trainingSupports"],
-): ClauseInputPayload[] =>
-  items
-    .map((item, index) => {
-      if (hasExplicitServiceType(item.serviceType)) return null
-      const parts: string[] = [
-        item.trainingCategory ? `培训类别：${item.trainingCategory}` : "培训类别未说明",
-        item.applicableDevices.length ? `适用设备：${formatList(item.applicableDevices)}` : null,
-        item.trainingTimes !== null && item.trainingTimes !== undefined ? `培训次数 ${item.trainingTimes}` : null,
-        item.trainingPeriod ? `培训周期 ${item.trainingPeriod}` : null,
-        item.trainingDays !== null && item.trainingDays !== undefined ? `每次 ${item.trainingDays} 天` : null,
-        item.trainingSeats !== null && item.trainingSeats !== undefined ? `名额 ${item.trainingSeats} 人` : null,
-        item.trainingCost ? `费用说明：${item.trainingCost}` : null,
-      ].filter(Boolean) as string[]
+): ClauseInputPayload[] => {
+  const clauses: ClauseInputPayload[] = []
+  items.forEach((item, index) => {
+    if (hasExplicitServiceType(item.serviceType)) return
+    const parts: string[] = [
+      item.trainingCategory ? `培训类别：${item.trainingCategory}` : "培训类别未说明",
+      item.applicableDevices.length ? `适用设备：${formatList(item.applicableDevices)}` : null,
+      item.trainingTimes !== null && item.trainingTimes !== undefined ? `培训次数 ${item.trainingTimes}` : null,
+      item.trainingPeriod ? `培训周期 ${item.trainingPeriod}` : null,
+      item.trainingDays !== null && item.trainingDays !== undefined ? `每次 ${item.trainingDays} 天` : null,
+      item.trainingSeats !== null && item.trainingSeats !== undefined ? `名额 ${item.trainingSeats} 人` : null,
+      item.trainingCost ? `费用说明：${item.trainingCost}` : null,
+    ].filter(Boolean) as string[]
 
-      const structured: Record<string, string> = {}
-      if (item.trainingCategory) structured.培训类别 = item.trainingCategory
-      if (item.applicableDevices.length) structured.适用设备 = formatList(item.applicableDevices)
-      if (item.trainingTimes !== null && item.trainingTimes !== undefined) structured.培训次数 = `${item.trainingTimes}`
-      if (item.trainingPeriod) structured.培训周期 = item.trainingPeriod
-      if (item.trainingDays !== null && item.trainingDays !== undefined) structured.每次天数 = `${item.trainingDays}`
-      if (item.trainingSeats !== null && item.trainingSeats !== undefined) structured.培训名额 = `${item.trainingSeats}`
-      if (item.trainingCost) structured.费用 = item.trainingCost
+    const structured: Record<string, string> = {}
+    if (item.trainingCategory) structured.培训类别 = item.trainingCategory
+    if (item.applicableDevices.length) structured.适用设备 = formatList(item.applicableDevices)
+    if (item.trainingTimes !== null && item.trainingTimes !== undefined) structured.培训次数 = `${item.trainingTimes}`
+    if (item.trainingPeriod) structured.培训周期 = item.trainingPeriod
+    if (item.trainingDays !== null && item.trainingDays !== undefined) structured.每次天数 = `${item.trainingDays}`
+    if (item.trainingSeats !== null && item.trainingSeats !== undefined) structured.培训名额 = `${item.trainingSeats}`
+    if (item.trainingCost) structured.费用 = item.trainingCost
 
-      return {
-        clauseId: `training-${index}`,
-        clauseType: "training_support",
-        clauseText: parts.join("；"),
-        structuredAttributes: Object.keys(structured).length ? structured : undefined,
-        originalSnippet: truncateSnippet(item.originalContractSnippet),
-      }
+    clauses.push({
+      clauseId: `training-${index}`,
+      clauseType: "training_support" as ServicePlanClauseType,
+      clauseText: parts.join("；"),
+      structuredAttributes: Object.keys(structured).length ? structured : undefined,
+      originalSnippet: truncateSnippet(item.originalContractSnippet),
     })
-    .filter((entry): entry is ClauseInputPayload => Boolean(entry))
+  })
+  return clauses
+}
 
 const buildSpareClauses = (
   items: ServiceInfoSnapshotPayload["keySpareParts"],
-): ClauseInputPayload[] =>
-  items
-    .map((item, index) => {
-      if (hasExplicitServiceType(item.serviceType)) return null
-      const parts: string[] = [
-        item.coveredItems.length ? `覆盖部件：${formatList(item.coveredItems)}` : "覆盖部件未说明",
-        item.replacementPolicy ? `更换策略：${item.replacementPolicy}` : null,
-        item.oldPartReturnRequired !== null && item.oldPartReturnRequired !== undefined
-          ? `旧件回收：${item.oldPartReturnRequired ? "需要" : "不需要"}`
-          : null,
-        item.nonReturnPenaltyPct !== null && item.nonReturnPenaltyPct !== undefined
-          ? `不回收赔付上限：${item.nonReturnPenaltyPct}%`
-          : null,
-        item.logisticsBy ? `物流承担：${item.logisticsBy}` : null,
-        item.leadTimeBusinessDays !== null && item.leadTimeBusinessDays !== undefined
-          ? `发货/更换时效 ${item.leadTimeBusinessDays} 个工作日`
-          : null,
-      ].filter(Boolean) as string[]
+): ClauseInputPayload[] => {
+  const clauses: ClauseInputPayload[] = []
+  items.forEach((item, index) => {
+    if (hasExplicitServiceType(item.serviceType)) return
+    const parts: string[] = [
+      item.coveredItems.length ? `覆盖部件：${formatList(item.coveredItems)}` : "覆盖部件未说明",
+      item.replacementPolicy ? `更换策略：${item.replacementPolicy}` : null,
+      item.oldPartReturnRequired !== null && item.oldPartReturnRequired !== undefined
+        ? `旧件回收：${item.oldPartReturnRequired ? "需要" : "不需要"}`
+        : null,
+      item.nonReturnPenaltyPct !== null && item.nonReturnPenaltyPct !== undefined
+        ? `不回收赔付上限：${item.nonReturnPenaltyPct}%`
+        : null,
+      item.logisticsBy ? `物流承担：${item.logisticsBy}` : null,
+      item.leadTimeBusinessDays !== null && item.leadTimeBusinessDays !== undefined
+        ? `发货/更换时效 ${item.leadTimeBusinessDays} 个工作日`
+        : null,
+    ].filter(Boolean) as string[]
 
-      const structured: Record<string, string> = {}
-      if (item.coveredItems.length) structured.覆盖部件 = formatList(item.coveredItems)
-      if (item.replacementPolicy) structured.更换策略 = item.replacementPolicy
-      if (item.oldPartReturnRequired !== null && item.oldPartReturnRequired !== undefined) {
-        structured.旧件回收 = item.oldPartReturnRequired ? "是" : "否"
-      }
-      if (item.nonReturnPenaltyPct !== null && item.nonReturnPenaltyPct !== undefined) {
-        structured["不回收赔付(%)"] = `${item.nonReturnPenaltyPct}`
-      }
-      if (item.logisticsBy) structured.物流承担 = item.logisticsBy
-      if (item.leadTimeBusinessDays !== null && item.leadTimeBusinessDays !== undefined) {
-        structured["时效(工作日)"] = `${item.leadTimeBusinessDays}`
-      }
+    const structured: Record<string, string> = {}
+    if (item.coveredItems.length) structured.覆盖部件 = formatList(item.coveredItems)
+    if (item.replacementPolicy) structured.更换策略 = item.replacementPolicy
+    if (item.oldPartReturnRequired !== null && item.oldPartReturnRequired !== undefined) {
+      structured.旧件回收 = item.oldPartReturnRequired ? "是" : "否"
+    }
+    if (item.nonReturnPenaltyPct !== null && item.nonReturnPenaltyPct !== undefined) {
+      structured["不回收赔付(%)"] = `${item.nonReturnPenaltyPct}`
+    }
+    if (item.logisticsBy) structured.物流承担 = item.logisticsBy
+    if (item.leadTimeBusinessDays !== null && item.leadTimeBusinessDays !== undefined) {
+      structured["时效(工作日)"] = `${item.leadTimeBusinessDays}`
+    }
 
-      return {
-        clauseId: `spare-${index}`,
-        clauseType: "key_spare_parts",
-        clauseText: parts.join("；"),
-        structuredAttributes: Object.keys(structured).length ? structured : undefined,
-        originalSnippet: truncateSnippet(item.originalContractSnippet),
-      }
+    clauses.push({
+      clauseId: `spare-${index}`,
+      clauseType: "key_spare_parts" as ServicePlanClauseType,
+      clauseText: parts.join("；"),
+      structuredAttributes: Object.keys(structured).length ? structured : undefined,
+      originalSnippet: truncateSnippet(item.originalContractSnippet),
     })
-    .filter((entry): entry is ClauseInputPayload => Boolean(entry))
+  })
+  return clauses
+}
 
 export const buildClauseInputs = (snapshot: ServiceInfoSnapshotPayload): ClauseInputPayload[] => [
   ...buildOnsiteClauses(snapshot.onsiteSla),
