@@ -1,4 +1,4 @@
-const { initializeDatabase } = require('../lib/init-db')
+import { initializeDatabase } from '../lib/init-db.js'
 
 async function runInit() {
   try {

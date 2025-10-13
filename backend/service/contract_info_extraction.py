@@ -62,6 +62,7 @@ class ContractInfoExtractionAgent:
         请根据给定的格式要求，修改以下存在错误的输入数据:
         {text}
 
+        请特别注意反斜杠(\)转译的处理，遇到反斜杠(\)时，需要将反斜杠转译为普通字符。
         请完整输出修复后的Json数据，不要添加任何其他内容和解释。
         """
         response = await self.llm.ainvoke(prompt)

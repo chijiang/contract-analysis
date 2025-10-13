@@ -122,7 +122,7 @@ export async function initializeDatabase() {
 }
 
 // 如果直接运行此脚本
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   initializeDatabase()
     .then(() => {
       console.log("初始化脚本执行完成")
