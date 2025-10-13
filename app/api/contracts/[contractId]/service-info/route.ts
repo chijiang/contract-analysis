@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { handleContractNotificationTriggers } from "@/app/api/contracts/_helpers/notification-runner"
 import { prisma } from "@/lib/prisma"
 import { createProcessingLog } from "@/lib/processing-logs"
 import {
@@ -59,14 +60,20 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       select: { processingStatus: true },
     })
     
-    if (currentContract?.processingStatus === "FAILED" || currentContract?.processingStatus === "PROCESSING_SERVICE_INFO") {
+    if (
+      currentContract?.processingStatus === "FAILED" ||
+      currentContract?.processingStatus === "PROCESSING_SERVICE_INFO"
+    ) {
       await prisma.contract.update({
         where: { id: contractId },
-        data: { 
+        data: {
           processingStatus: "COMPLETED",
           processingError: null,
           updatedAt: new Date(),
         },
+      })
+      handleContractNotificationTriggers(contractId).catch((notificationError) => {
+        console.error("Failed to process notification triggers:", notificationError)
       })
     }
 
@@ -89,4 +96,3 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ message }, { status: 500 })
   }
 }
-

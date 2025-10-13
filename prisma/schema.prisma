@@ -35,6 +35,7 @@ model Contract {
   keySparePartTubes ContractKeySparePartTube[]
   keySparePartCoils ContractKeySparePartCoil[]
   serviceInfoSnapshot ContractServiceInfoSnapshot?
+  notificationSubscriptions ContractBatchNotificationContract[]
 
   @@index([createdAt])
   @@index([fileHash])
@@ -275,6 +276,35 @@ model ContractKeySparePartCoil {
 
   @@index([contractId])
 }
+
+model ContractBatchNotification {
+  id         String   @id @default(cuid())
+  email      String
+  status     String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, FAILED
+  sendError  String?
+  notifiedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  contracts ContractBatchNotificationContract[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ContractBatchNotificationContract {
+  id             String   @id @default(cuid())
+  notificationId String
+  contractId     String
+  createdAt      DateTime @default(now())
+
+  notification ContractBatchNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  contract     Contract                  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, contractId])
+  @@index([contractId])
+}
+
 model ServicePlan {
   id          String              @id @default(cuid())
   name        String

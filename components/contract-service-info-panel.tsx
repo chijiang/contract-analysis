@@ -841,7 +841,7 @@ export function ContractServiceInfoPanel({
                 </span>
                 {recommendation.overallAdjustmentNotes && (
                   <span className="text-xs text-muted-foreground">
-                    调整建议：{recommendation.overallAdjustmentNotes}
+                    <b>与标准服务计划的差别：</b>{recommendation.overallAdjustmentNotes}
                   </span>
                 )}
               </div>

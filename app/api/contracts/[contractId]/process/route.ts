@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { handleContractNotificationTriggers } from "@/app/api/contracts/_helpers/notification-runner"
 import { prisma } from "@/lib/prisma"
 import { createProcessingLog } from "@/lib/processing-logs"
 
@@ -191,5 +192,10 @@ async function updateContractStatus(
       updatedAt: new Date(),
     },
   })
-}
 
+  if (status === "COMPLETED" || status === "FAILED") {
+    handleContractNotificationTriggers(contractId).catch((notificationError) => {
+      console.error("Failed to process notification triggers:", notificationError)
+    })
+  }
+}

@@ -249,7 +249,7 @@ class ServicePlanRecommendationLLMOutput(BaseModel):
     overall_plan_name: Optional[str] = Field(None, description="整体推荐的服务计划名称", alias="overallPlanName")
     overall_adjustment_notes: Optional[str] = Field(
         None,
-        description="若需在标准计划基础上做额外调整，请在此说明",
+        description="阐述清楚所有跟标准service plan的偏差",
         alias="overallAdjustmentNotes",
     )
     matches: List[ClausePlanRecommendation] = Field(..., description="逐条款的推荐结果")

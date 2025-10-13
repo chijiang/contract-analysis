@@ -97,7 +97,7 @@ export default function LoginPage() {
             <Scale className="w-8 h-8 text-primary-foreground" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">合同分析管理系统</h1>
-          <p className="text-gray-600 mt-2">GE的合同分析和管理工具</p>
+          <p className="text-gray-600 mt-2">GE Healthcare合同分析和管理工具</p>
         </div>
 
         {/* Login Card */}

@@ -19,6 +19,14 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Table,
   TableBody,
   TableCaption,
@@ -28,6 +36,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import type { ContractTemplate } from "@/app/types/contract-analysis"
 import {
   Pagination,
@@ -45,6 +56,8 @@ const formatDateTime = (input: string) => {
   }
   return date.toLocaleString()
 }
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 type ContractListItem = {
   id: string
@@ -163,6 +176,11 @@ export function ContractDashboard() {
   const [processingMap, setProcessingMap] = useState<Record<string, boolean>>({})
   const [isUploading, setIsUploading] = useState(false)
   const [globalError, setGlobalError] = useState<string | null>(null)
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([])
+  const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false)
+  const [wantsEmailNotification, setWantsEmailNotification] = useState(false)
+  const [notificationEmail, setNotificationEmail] = useState("")
+  const [notificationEmailError, setNotificationEmailError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -424,7 +442,7 @@ export function ContractDashboard() {
   }, [])
 
   const processFile = useCallback(
-    async (file: File) => {
+    async (file: File): Promise<string | null> => {
       const taskId = `${file.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`
       appendTask({ id: taskId, fileName: file.name, status: "processing", message: "正在读取文件" })
 
@@ -456,7 +474,7 @@ export function ContractDashboard() {
             message: "重复合同已触发重新分析",
             contractId,
           })
-          return
+          return contractId
         }
 
         const markdown = await convertPdfToMarkdown(file)
@@ -478,11 +496,13 @@ export function ContractDashboard() {
 
         // 标记任务完成（上传和保存部分完成，后台继续处理）
         updateTask(taskId, { status: "completed", message: "上传完成，后台处理中" })
+        return contract.id
       } catch (error) {
         updateTask(taskId, {
           status: "error",
           message: error instanceof Error ? error.message : "处理失败",
         })
+        return null
       }
     },
     [appendTask, checkDuplicate, convertPdfToMarkdown, markProcessing, persistContract, refreshContracts, replaceContract, templateIds, triggerAnalysis, triggerServiceInfo, updateTask],
@@ -545,7 +565,7 @@ export function ContractDashboard() {
   )
 
   const handleFileChange = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
+    (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files
       if (!files || files.length === 0) return
 
@@ -557,19 +577,88 @@ export function ContractDashboard() {
         return
       }
 
-      setIsUploading(true)
-      try {
-        await Promise.all(Array.from(files).map((file) => processFile(file)))
-        await refreshContracts()
-      } catch (error) {
-        console.error("批量处理合同失败", error)
-      } finally {
-        setIsUploading(false)
-        event.target.value = ""
-      }
+      setPendingUploadFiles(Array.from(files))
+      setNotificationEmail("")
+      setNotificationEmailError(null)
+      setWantsEmailNotification(false)
+      setIsNotificationDialogOpen(true)
+      event.target.value = ""
     },
-    [processFile, refreshContracts, templateIds],
+    [templateIds],
   )
+
+  const handleNotificationDialogChange = useCallback((open: boolean) => {
+    setIsNotificationDialogOpen(open)
+    if (!open) {
+      setPendingUploadFiles([])
+      setNotificationEmail("")
+      setNotificationEmailError(null)
+      setWantsEmailNotification(false)
+    }
+  }, [])
+
+  const startBatchUpload = useCallback(async () => {
+    if (pendingUploadFiles.length === 0) {
+      setIsNotificationDialogOpen(false)
+      return
+    }
+
+    if (wantsEmailNotification) {
+      const trimmedEmail = notificationEmail.trim()
+      if (!EMAIL_PATTERN.test(trimmedEmail)) {
+        setNotificationEmailError("请输入有效的邮箱地址")
+        return
+      }
+      setNotificationEmailError(null)
+    } else {
+      setNotificationEmailError(null)
+    }
+
+    const filesToProcess = [...pendingUploadFiles]
+
+    setIsNotificationDialogOpen(false)
+    setIsUploading(true)
+    setGlobalError(null)
+
+    try {
+      const contractIds = await Promise.all(filesToProcess.map((file) => processFile(file)))
+      await refreshContracts()
+
+      if (wantsEmailNotification) {
+        const successfulIds = contractIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+        const uniqueIds = Array.from(new Set(successfulIds))
+
+        if (uniqueIds.length === 0) {
+          setGlobalError("没有成功的合同可用于邮件通知")
+        } else {
+          const response = await fetch("/api/contracts/batch-notifications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: notificationEmail.trim(), contractIds: uniqueIds }),
+          })
+          if (!response.ok) {
+            const payload = await response.json().catch(() => null)
+            throw new Error(payload?.message ?? "创建邮件通知失败")
+          }
+        }
+      }
+    } catch (error) {
+      console.error("批量处理合同失败", error)
+      setGlobalError(error instanceof Error ? error.message : "批量处理合同失败")
+    } finally {
+      setIsUploading(false)
+      setPendingUploadFiles([])
+      setNotificationEmail("")
+      setNotificationEmailError(null)
+      setWantsEmailNotification(false)
+    }
+  }, [
+    notificationEmail,
+    pendingUploadFiles,
+    processFile,
+    refreshContracts,
+    wantsEmailNotification,
+  ])
 
   const handleTriggerUpload = useCallback(() => {
     fileInputRef.current?.click()
@@ -678,9 +767,93 @@ export function ContractDashboard() {
 
   const hasTemplates = templates.length > 0
   const showUploadDisabled = isUploading || isTemplatesLoading || !hasTemplates
+  const confirmDisabled =
+    isUploading ||
+    pendingUploadFiles.length === 0 ||
+    (wantsEmailNotification && notificationEmail.trim().length === 0)
 
   return (
     <div className="space-y-8">
+      <Dialog open={isNotificationDialogOpen} onOpenChange={handleNotificationDialogChange}>
+        <DialogContent showCloseButton={!isUploading}>
+          <DialogHeader>
+            <DialogTitle>上传合同</DialogTitle>
+            <DialogDescription>
+              已选择 {pendingUploadFiles.length} 份合同，您可以选择在处理完成后发送邮件通知。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md border border-dashed border-muted bg-muted/40 p-3 text-sm">
+              <p>本次上传的文件：</p>
+              <ul className="list-disc pl-5 text-muted-foreground">
+                {pendingUploadFiles.slice(0, 3).map((file) => (
+                  <li key={file.name}>{file.name}</li>
+                ))}
+              </ul>
+              {pendingUploadFiles.length > 3 && (
+                <p className="text-muted-foreground">
+                  ……等 {pendingUploadFiles.length - 3} 份文件
+                </p>
+              )}
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="email-notify-switch">邮件通知</Label>
+                <p className="text-muted-foreground text-sm">
+                  所有合同分析完成后将自动发送导出的 Excel 附件
+                </p>
+              </div>
+              <Switch
+                id="email-notify-switch"
+                checked={wantsEmailNotification}
+                onCheckedChange={setWantsEmailNotification}
+                disabled={isUploading}
+              />
+            </div>
+            {wantsEmailNotification && (
+              <div className="space-y-2">
+                <Label htmlFor="notification-email">收件邮箱</Label>
+                <Input
+                  id="notification-email"
+                  type="email"
+                  placeholder="name@example.com"
+                  value={notificationEmail}
+                  onChange={(event) => {
+                    setNotificationEmail(event.target.value)
+                    if (notificationEmailError) {
+                      setNotificationEmailError(null)
+                    }
+                  }}
+                  disabled={isUploading}
+                />
+                {notificationEmailError && (
+                  <p className="text-sm text-destructive">{notificationEmailError}</p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleNotificationDialogChange(false)}
+              disabled={isUploading}
+            >
+              取消
+            </Button>
+            <Button type="button" onClick={() => void startBatchUpload()} disabled={confirmDisabled}>
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  正在处理...
+                </>
+              ) : (
+                "开始处理"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
